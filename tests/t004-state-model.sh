@@ -14,6 +14,30 @@ printf '{bad' > "$REIMS_STATE_ROOT/state.json"; h=$(sha256sum "$REIMS_STATE_ROOT
 rm -rf "$REIMS_STATE_ROOT"; mkdir -p "$REIMS_STATE_ROOT"; run configure --vm-id reims-0123456789abcdef --macos sequoia --cpu 8 --ram-gb 16 --disk-gb 80 >/dev/null
 run transition installing >/dev/null; mkdir -p "$REIMS_STATE_ROOT/vms/reims-0123456789abcdef/installer"; touch "$REIMS_STATE_ROOT/vms/reims-0123456789abcdef/installer/sequoia.img"; bash "$ROOT/scripts/reims-launch.sh" --dry-run | grep -q APPLIANCE_STATE=installing; echo LAUNCH_INSTALLING_FROM_STATE=PASS
 run transition installed >/dev/null; bash "$ROOT/scripts/reims-launch.sh" --dry-run | grep -q 'INSTALL_MEDIA=<absent>'; echo LAUNCH_INSTALLED_FROM_STATE=PASS
+if run transition installing >"$TMP/transition.out" 2>"$TMP/transition.err"; then exit 1; fi
+grep -q 'invalid transition: installed -> installing' "$TMP/transition.err"
+run show | grep -q '"state": "installed"'
+echo INVALID_TRANSITION_REJECTED=PASS
+python3 - "$REIMS_STATE_ROOT/state.json" <<'PY2'
+import json,sys
+d=json.load(open(sys.argv[1])); del d["disk_gb"]; json.dump(d,open(sys.argv[1],"w"))
+PY2
+if run validate >"$TMP/missing.out" 2>"$TMP/missing.err"; then exit 1; fi
+grep -Eq 'missing required field.*disk_gb|disk_gb.*required' "$TMP/missing.err"
+echo MISSING_FIELD_REJECTED=PASS
+rm -rf "$REIMS_STATE_ROOT"; mkdir -p "$REIMS_STATE_ROOT"
+run configure --vm-id reims-0123456789abcdef --macos sequoia --cpu 6 --ram-gb 13 --disk-gb 91 >/dev/null
+mkdir -p "$REIMS_STATE_ROOT/vms/reims-0123456789abcdef/installer"
+touch "$REIMS_STATE_ROOT/vms/reims-0123456789abcdef/installer/sequoia.img"
+run transition installing >/dev/null
+boot="$(bash "$ROOT/scripts/reims-launch.sh" --dry-run)"
+grep -q '^VM_ID=reims-0123456789abcdef$' <<<"$boot"
+grep -q '^APPLIANCE_STATE=installing$' <<<"$boot"
+grep -q '^CPU_CORES=6$' <<<"$boot"
+grep -q '^RAM=13G$' <<<"$boot"
+grep -q "^PERSISTENT_DIR=$REIMS_STATE_ROOT/vms/reims-0123456789abcdef/persistent$" <<<"$boot"
+grep -q "^INSTALL_MEDIA=$REIMS_STATE_ROOT/vms/reims-0123456789abcdef/installer/sequoia.img$" <<<"$boot"
+echo BOOT_RESOURCES_FROM_STATE=PASS
 run transition recovery >/dev/null; expect_launch_failure 'state is recovery'; echo LAUNCH_RECOVERY_REJECTED=PASS
 printf '{bad' > "$REIMS_STATE_ROOT/state.json"; expect_launch_failure 'state.json is corrupt'; echo LAUNCH_CORRUPT_STATE_REJECTED=PASS
 python3 - "$REIMS_STATE_ROOT/state.json" <<'PY'
