@@ -444,16 +444,16 @@ appliance/
 
 Essa estrutura pode evoluir, mas os limites entre código do appliance, estado persistente e árvore de desenvolvimento devem ser mantidos.
 
-## 12. Atualizações do fork
+## 12. Atualizações do Reims OS
 
-A origem principal do Reims OS é:
+A origem principal do produto é:
 
 ```text
-https://github.com/felipeab10/reims-vgpu
+https://github.com/felipeab10/reims-os
 branch: master
 ```
 
-O appliance verifica a master automaticamente antes de iniciar o macOS, desde que haja conectividade.
+O appliance verifica atualizações do `reims-os`; os componentes `reims-vgpu`, QEMU, OSX-KVM e osx-serial-generator são consumidos nos SHAs pinados pela release do Reims OS. O runtime não acompanha a `master` desses componentes diretamente.
 
 A atualização deve ser transacional:
 
@@ -500,11 +500,13 @@ REIMS_OS_VERSION=0.1.0
 BASE_ID=ubuntu
 BASE_VERSION=<versão validada>
 CHANNEL=stable
-REIMS_REPO=felipeab10/reims-vgpu
-REIMS_BRANCH=master
-REIMS_COMMIT=<sha>
+REIMS_OS_REPO=felipeab10/reims-os
+REIMS_OS_BRANCH=master
+REIMS_OS_COMMIT=<sha>
+REIMS_VGPU_COMMIT=<sha>
 QEMU_COMMIT=<sha>
 OSX_KVM_COMMIT=<sha>
+SERIAL_GENERATOR_COMMIT=<sha>
 KERNEL=<versão>
 MESA=<versão>
 NVIDIA=<versão>
