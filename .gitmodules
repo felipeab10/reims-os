@@ -1,3 +1,9 @@
 [submodule "components/reims-vgpu"]
 	path = components/reims-vgpu
 	url = https://github.com/felipeab10/reims-vgpu.git
+[submodule "third_party/OSX-KVM"]
+	path = third_party/OSX-KVM
+	url = https://github.com/kholia/OSX-KVM.git
+[submodule "third_party/osx-serial-generator"]
+	path = third_party/osx-serial-generator
+	url = https://github.com/sickcodes/osx-serial-generator.git
