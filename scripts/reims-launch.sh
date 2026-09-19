@@ -7,7 +7,8 @@ export REIMS_STATE_ROOT="$STATE_ROOT"
 DRY=0
 [ "${1:-}" = --dry-run ] && { DRY=1; shift; }
 [ "$#" -eq 0 ] || { echo "usage: scripts/reims-launch.sh [--dry-run]" >&2; exit 64; }
-if ! STATE_KV="$(python3 - "$ROOT/scripts/reims-state.py" <<"PY"
+STATE_ERR=$(mktemp)
+if ! STATE_KV="$(python3 - "$ROOT/scripts/reims-state.py" <<"PY" 2>"$STATE_ERR"
 import importlib.util, sys
 s=importlib.util.spec_from_file_location("reims_state",sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
 v=m.read_state()
@@ -17,9 +18,11 @@ p=m.paths(v)
 for k,val in {**p,"VM_ID":v["vm_id"],"MACOS":v["macos"],"CPU_CORES":v["cpu"],"RAM":v["ram_gb"],"DISK_GB":v["disk_gb"],"APPLIANCE_STATE":v["state"]}.items(): print(f"{k}={val}")
 PY
 )"; then
-  echo "ERROR: invalid Reims state" >&2
+  cat "$STATE_ERR" >&2
+  rm -f "$STATE_ERR"
   exit 1
 fi
+rm -f "$STATE_ERR"
 mapfile -t KV <<< "$STATE_KV"
 for item in "${KV[@]}"; do key=${item%%=*}; val=${item#*=}; printf -v "$key" "%s" "$val"; done
 INSTALL_MEDIA="$INSTALLER_DIR/$MACOS.img"
