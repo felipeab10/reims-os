@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+state.json
+state-root/
+runtime/
+*.qcow2
+*.img
+*.dmg
+*.chunklist
+*.log
+logs/
+/tmp/
+build/
+target/
