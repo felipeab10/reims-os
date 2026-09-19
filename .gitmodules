@@ -1,0 +1,3 @@
+[submodule "components/reims-vgpu"]
+	path = components/reims-vgpu
+	url = https://github.com/felipeab10/reims-vgpu.git
