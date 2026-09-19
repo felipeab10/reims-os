@@ -47,7 +47,7 @@ Uma task só deve mudar para `[x]` após existir evidência de implementação e
 ### Atualização
 
 - [ ] T013 — Definir layout transacional de releases
-- [ ] T014 — Implementar updater da master do fork
+- [ ] T014 — Implementar updater transacional do reims-os
 - [ ] T015 — Implementar build/test/preflight antes de ativar release
 - [ ] T016 — Implementar rollback automático para last-known-good
 - [ ] T017 — Criar manifesto de versões por boot
