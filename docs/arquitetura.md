@@ -95,6 +95,10 @@ O sistema atual de rails/snapshots deve ser preservado para desenvolvimento, tes
 
 O `reims-os` é o produto/appliance e `reims-vgpu` é seu componente de virtualização. `OSX-KVM` e `osx-serial-generator` são dependências upstream pinadas. Releases são definidas pela combinação dos SHAs registrados nos submodules; atualizações só entram após validação e commit do novo ponteiro.
 
+## Bootstrap seletivo de dependências
+
+As dependências upstream são materializadas seletivamente pelo `scripts/bootstrap-deps.sh`. Os submodules históricos internos de `reims-vgpu` não são dependências do appliance; o Reims OS usa seus próprios checkouts canônicos de OSX-KVM e osx-serial-generator. Os submodules nested de firmware e testes do QEMU são lazy/on-demand e só devem ser inicializados quando um build concreto exigir.
+
 ## 4. Fluxo de instalação
 
 ### 4.1 Live Linux
