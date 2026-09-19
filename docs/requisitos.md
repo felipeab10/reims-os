@@ -179,16 +179,16 @@ Não desligar/reiniciar automaticamente o host em caso de:
 
 Nesses casos preservar logs e entrar em fluxo de recuperação.
 
-## 8. Atualização do fork
+## 8. Atualização do Reims OS
 
-Origem principal:
+Origem principal do produto:
 
 ```text
-https://github.com/felipeab10/reims-vgpu
+https://github.com/felipeab10/reims-os
 branch: master
 ```
 
-O sistema deve verificar atualizações automaticamente antes de iniciar o macOS, quando houver rede.
+O sistema deve verificar atualizações do `reims-os` automaticamente antes de iniciar o macOS, quando houver rede. `reims-vgpu`, QEMU, OSX-KVM e osx-serial-generator devem permanecer nos SHAs pinados pela release até que uma atualização de dependência seja validada e commitada no Reims OS.
 
 A atualização deve ser transacional:
 
