@@ -1,6 +1,6 @@
 # T004 — Criar modelo de estado persistente do appliance
 
-Status: `[-]` em validação
+Status: `[x]` concluída e validada
 
 Dependências: **T001**, **T002** e decisões consolidadas em `docs/arquitetura.md`.
 
@@ -111,7 +111,7 @@ Registrar nesta task:
 - exemplos de transição de estado;
 - prova de que paths de VM não ficam dentro da release Git.
 
-## Implementação em validação
+## Implementação validada
 
 - Schema 1 validado em `scripts/reims-state.py`.
 - Estado padrão: `REIMS_STATE_ROOT=/var/lib/reims`, com override controlado para testes.
@@ -121,6 +121,25 @@ Registrar nesta task:
 - Launcher state-driven: `scripts/reims-launch.sh --dry-run`.
 - O VM Manager cria `installing` antes do provisionamento; `installed` não é automático.
 
+## Validação final
+
+- PR: #1 — `feat(appliance): complete persistent state model [T004]`;
+- HEAD revisado: `e508e39bfafe21354ddf907840f4f284bc44f726`;
+- merge em `master`: `e74db893a0e53d15d651147009cb997814cff6da`;
+- schema: 1;
+- `REIMS_STATE_ROOT`: `/var/lib/reims`;
+- escrita atômica e preservação do estado anterior em falha simulada: PASS;
+- `init` idempotente e protegido contra overwrite/corrupção: PASS;
+- schema desconhecido, campo obrigatório ausente, VM ID/macOS/recursos inválidos e inconsistência `configured/state`: rejeitados;
+- transição inválida `installed -> installing`: rejeitada com estado preservado;
+- launcher `--dry-run`: recursos, mídia e paths resolvidos a partir de `state.json`;
+- manager cria `installing` e não promove automaticamente para `installed`;
+- paths do appliance permanecem fora da checkout e coerentes com `REIMS_STATE_ROOT`;
+- dependências canônicas do `reims-os`: PASS;
+- regressões T002/T003: PASS;
+- `T004_CONTROLLED_TEST_PASS`: PASS;
+- nenhuma VM real foi iniciada na rodada de validação.
+
 ## Histórico
 
-Implementação T004 em validação; ainda não concluída.
+T004 concluída após migração do appliance para `reims-os`, revisão remota da PR #1 e validação dos critérios de aceitação do modelo de estado persistente.
