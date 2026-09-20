@@ -34,4 +34,4 @@ if [ "$DRY" -eq 1 ]; then
  printf "VM_ID=%s\nAPPLIANCE_STATE=%s\nMACOS=%s\nCPU_CORES=%s\nRAM=%s\nPERSISTENT_DIR=%s\nINSTALL_MEDIA=%s\nQEMU_REBOOT_ACTION=%s\nRAILS_DIR=%s\nREIMS_VGPU_FULLSCREEN=%s\n" "$VM_ID" "$APPLIANCE_STATE" "$MACOS" "$CPU_CORES" "$RAM" "$PERSISTENT_DIR" "${INSTALL_MEDIA:-<absent>}" "$QEMU_REBOOT_ACTION" "$RAILS_DIR" "${REIMS_VGPU_FULLSCREEN-}"
  exit 0
 fi
-exec "$REIMS_VGPU_ROOT/vm/boot-x86.sh" --persistent --device reims-vgpu-pci --rail "$VM_ID"
+exec python3 "$ROOT/scripts/reims-supervisor.py" run --vm-id "$VM_ID" --appliance-state "$APPLIANCE_STATE" --run-dir "$RUN_DIR" --log-root "${REIMS_LOG_ROOT:-/var/log/reims}" -- "$REIMS_VGPU_ROOT/vm/boot-x86.sh" --persistent --device reims-vgpu-pci --rail "$VM_ID"

@@ -1,6 +1,6 @@
 # T005 — Criar supervisor QMP/serial/QEMU
 
-Status: `[ ]` não iniciada
+Status: `[-]` em implementação/validação
 
 Dependências: **T001–T004**.
 
@@ -117,3 +117,11 @@ Registrar nesta task:
 ## Histórico
 
 Nenhuma implementação validada ainda.
+
+## Implementação em validação
+
+Implementado em scripts/reims-supervisor.py, usando Python stdlib. A cadeia é reims-launch/VM manager -> supervisor -> boot-x86 -> QEMU. Cada execução cria boot-YYYYMMDD-HHMMSS-UUID sob REIMS_LOG_ROOT, com lifecycle.log JSONL, result.json, qemu.log e serial.log; latest aponta para a sessão mais recente.
+
+O result.json usa schema 1. A precedência é panic serial -> sinal externo -> fatal pré-QEMU -> QEMU não-zero -> RESET em installed -> SHUTDOWN -> UNKNOWN_EXIT. QMP indisponível é conservador e nunca implica shutdown/reboot. RESET em installing registra INSTALLER_RESET e não encerra supervisão. O PID QEMU só é aceito como filho direto do launcher em /proc/<launcher>/task/<launcher>/children.
+
+A matriz está em tests/t005-supervisor.py. Nenhuma execução macOS real foi realizada; T005 permanece em implementação/validação.
