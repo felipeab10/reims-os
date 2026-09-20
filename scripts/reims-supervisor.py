@@ -45,7 +45,7 @@ def log_event(path, source, name, **extra):
     row = {"timestamp": now(), "source": source, "event": name}
     row.update(extra)
     with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(row, sort_keys=True) + "\\n")
+        f.write(json.dumps(row, sort_keys=True) + "\n")
         f.flush()
         os.fsync(f.fileno())
 
@@ -61,7 +61,7 @@ def proc_evidence(pid):
     except OSError:
         exe = None
     try:
-        raw = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\\0")
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
         cmdline = [x.decode(errors="replace") for x in raw if x]
     except OSError:
         cmdline = None
