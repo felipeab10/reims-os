@@ -32,7 +32,7 @@ Uma task só deve mudar para `[x]` após existir evidência de implementação e
 ### Lifecycle
 
 - [x] [T005 — Criar supervisor QMP/serial/QEMU](T005-supervisor.md) — concluída e validada; supervisor QMP/serial/PID, classificação, evidência JSONL e runtime Sequoia 15.8 PASS
-- [-] [T006 — Shutdown do macOS desliga o host](T006-host-poweroff.md)
+- [x] [T006 — Shutdown do macOS desliga o host](T006-host-poweroff.md) — concluída e validada; matriz controlada e runtime Sequoia 15.8 em dry-run PASS
 - [ ] [T007 — Restart do macOS reinicia o host](T007-host-reboot.md)
 - [x] [T008 — Diferenciar shutdown/reboot normal de crash/kernel panic](T008-lifecycle-classification.md) — concluída e validada; matriz controlada, recovery safety e runtime Sequoia 15.8 PASS
 
