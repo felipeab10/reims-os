@@ -88,7 +88,7 @@ REIMS_HOST_ACTION_MODE possui os modos disabled (default seguro), dry-run e syst
 
 O supervisor chama o consumidor somente depois de persistir atomicamente result.json e atualizar latest, sempre usando o result_path exato da sessão. Falha do consumidor é registrada como HOST_ACTION_CONSUMER_FAILED, não altera a classificação e preserva o retorno original do launcher/QEMU. disabled registra HOST_ACTION_DISABLED sem criar claim; chamadas duplicadas preservam o host-action.json original. Falhas de sync ou systemctl geram HOST_POWEROFF_FAILED, não chamam poweroff em caso de sync falho e mantêm o claim para impedir retry automático.
 
-A matriz controlada cobre shutdown elegível, classificações não elegíveis, estado installing, rc=0, recovery guard, resultado inválido, final-result-only, integração real do supervisor em dry-run, auditoria, dry-run/systemd, idempotência e falhas conservadoras. A implementação e a validação previstas para T006 foram concluídas; a revisão e o merge da PR permanecem etapas de governança separadas.
+A matriz controlada cobre shutdown elegível, classificações não elegíveis, estado installing, rc=0, recovery guard, resultado inválido, final-result-only, integração real do supervisor em dry-run, auditoria, dry-run/systemd, idempotência e falhas conservadoras. A implementação e a validação previstas para T006 foram concluídas; a PR #5 foi mergeada normalmente no commit 38b327beaec13578390b2087fb13202fdbc71057.
 
 ## Governança e evidência final
 
@@ -132,7 +132,7 @@ Um poweroff físico do host de desenvolvimento foi deliberadamente deferido. A i
 
 ### Regressões e status
 
-T006: 13 tests PASS; T008: 19 tests PASS; T005: 16 tests PASS; T002/T003/T004: PASS; dependency check: PASS; pins unchanged. PR #5 permanece aberta e não mergeada. T007 permanece não implementada.
+T006: 13 tests PASS; T008: 19 tests PASS; T005: 16 tests PASS; T002/T003/T004: PASS; dependency check: PASS; pins unchanged. PR #5 foi mergeada normalmente no commit 38b327beaec13578390b2087fb13202fdbc71057. T007 permanece em implementação/validação separada.
 
 ## Histórico
 

@@ -86,17 +86,23 @@ class T006HostPoweroffTests(unittest.TestCase):
 
     def test_noneligible_matrix(self):
         cases = [("GUEST_SHUTDOWN", "installing", "T006_INSTALLING_NO_POWEROFF"),
-                 ("GUEST_REBOOT", "installed", "T006_REBOOT_NO_POWEROFF"),
+                 ("GUEST_REBOOT", "installing", "T006_REBOOT_NO_POWEROFF"),
                  ("GUEST_KERNEL_PANIC", "installed", "T006_PANIC_NO_POWEROFF"),
                  ("QEMU_FATAL", "installed", "T006_QEMU_FATAL_NO_POWEROFF"),
                  ("REIMS_FATAL", "installed", "T006_REIMS_FATAL_NO_POWEROFF"),
                  ("EXTERNAL_SIGNAL", "installed", "T006_EXTERNAL_SIGNAL_NO_POWEROFF"),
                  ("UNKNOWN_EXIT", "installed", "T006_UNKNOWN_NO_POWEROFF")]
         for classification, state, marker in cases:
+            self.session.joinpath("host-action.claim").unlink(missing_ok=True)
             self.write_result(classification, state)
             result = action.consume(self.result_path, mode="dry-run")
-            self.assertEqual(result["status"], "NO_ACTION")
-            self.assertFalse((self.session / "host-action.claim").exists())
+            expected = "WOULD_REBOOT" if classification == "GUEST_REBOOT" and state == "installed" else "NO_ACTION"
+            self.assertEqual(result["status"], expected)
+            if classification == "GUEST_REBOOT":
+                self.assertEqual(result["action"], "reboot")
+                self.assertFalse(self.calls)
+            else:
+                self.assertFalse((self.session / "host-action.claim").exists())
             print(marker + "=PASS")
 
     def test_guards_and_rc0(self):

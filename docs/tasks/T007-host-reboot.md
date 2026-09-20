@@ -1,6 +1,6 @@
 # T007 — Restart do macOS reinicia o host
 
-Status: `[ ]` não iniciada
+Status: `[-]` em implementação/validação
 
 Dependência: **T005** concluída e validada.
 
@@ -80,6 +80,12 @@ Registrar nesta task:
 - resultado de pelo menos um reboot real seguro;
 - confirmação de que o próximo boot volta ao appliance corretamente quando as tasks de auto-start estiverem disponíveis.
 
+## Implementação controlada em validação
+
+T007 consome exclusivamente o result.json final persistido pelo supervisor/T008. A elegibilidade é classification=GUEST_REBOOT, appliance_state=installed e recovery_required=false; installing permanece sem host reboot. O consumidor compartilhado com T006 diferencia poweroff/reboot, grava WOULD_REBOOT em dry-run, usa host-action.claim com O_CREAT|O_EXCL, persiste audit antes de sync e só então chama systemctl reboot em systemd. Falhas conservadoras, idempotência e integração do supervisor são cobertas por tests/t007-host-reboot.py.
+
+A análise de scripts/reims-launch.sh confirma QEMU_REBOOT_ACTION=reset durante installing e QEMU_REBOOT_ACTION=exit quando installed; o reset interno do instalador não deve virar reboot do host. Nenhum reboot físico foi executado.
+
 ## Histórico
 
-Nenhuma implementação validada ainda.
+Implementação controlada iniciada nesta rodada.
