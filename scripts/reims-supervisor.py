@@ -67,20 +67,82 @@ def proc_evidence(pid):
         cmdline = None
     return {"pid": pid, "exe": exe, "cmdline": cmdline}
 
+def _qmp_terminal(facts):
+    return next((event for event in reversed(facts.get("qmp_events", [])) if event in ("SHUTDOWN", "RESET")), None)
+
+
+def _runtime_log_text(facts):
+    text = facts.get("qemu_log_text", "")
+    offset = facts.get("qemu_runtime_log_offset")
+    if offset is None:
+        return text
+    return text[offset:]
+
+
+def _fatal_evidence(facts):
+    text = _runtime_log_text(facts)
+    upper = text.upper()
+    if "VK_ERROR_DEVICE_LOST" in upper or ("VULKAN" in upper and "DEVICE LOST" in upper):
+        return ("REIMS_FATAL", "vulkan_device_lost", {"source": "qemu_log", "marker": "VK_ERROR_DEVICE_LOST"})
+    if "SEGMENTATION FAULT" in upper or "SIGSEGV" in upper:
+        return ("QEMU_FATAL", "qemu_runtime_segfault", {"source": "qemu_log", "marker": "segmentation fault"})
+    if "ABORTED" in upper or "ASSERTION FAILED" in upper or "QEMU: ASSERT" in upper:
+        return ("QEMU_FATAL", "qemu_runtime_abort", {"source": "qemu_log", "marker": "runtime abort/assertion"})
+    if facts.get("qemu_exit") is not None and facts["qemu_exit"] != 0 and facts.get("external_signal") is None:
+        return ("QEMU_FATAL", "qemu_exit_nonzero", {"source": "process", "exit_code": facts["qemu_exit"]})
+    if facts.get("launcher_exit") is not None and not facts.get("qemu_identified") and facts["launcher_exit"] != 0:
+        return ("REIMS_FATAL", "launcher_exit_nonzero", {"source": "process", "exit_code": facts["launcher_exit"]})
+    return None
+
+
+def classify_session(facts):
+    sources = ["serial", "qmp", "process", "qemu_log", "supervisor_signal"]
+    if facts.get("host_kernel_log_available"):
+        sources.append("host_kernel_log")
+    if facts.get("panic"):
+        decision = ("GUEST_KERNEL_PANIC", "serial_kernel_panic", {"source": "serial", "marker": PANIC})
+    else:
+        fatal = _fatal_evidence(facts)
+        if fatal:
+            decision = fatal
+        elif facts.get("external_signal") is not None:
+            decision = ("EXTERNAL_SIGNAL", "supervisor_signal", {"source": "supervisor", "signal": facts["external_signal"]})
+        else:
+            terminal = _qmp_terminal(facts)
+            if terminal == "SHUTDOWN":
+                decision = ("GUEST_SHUTDOWN", "qmp_shutdown", {"source": "qmp", "event": "SHUTDOWN"})
+            elif terminal == "RESET" and facts.get("appliance_state") == "installed":
+                decision = ("GUEST_REBOOT", "qmp_reset", {"source": "qmp", "event": "RESET"})
+            else:
+                decision = ("UNKNOWN_EXIT", "insufficient_evidence", {"source": "process"})
+    classification, reason, primary = decision
+    return {"classification": classification, "classification_reason": reason,
+            "primary_evidence": primary, "sources_consulted": sources,
+            "recovery_required": classification in {"GUEST_KERNEL_PANIC", "QEMU_FATAL", "REIMS_FATAL", "UNKNOWN_EXIT"}}
+
+
+# Backward-compatible entry point retained for T005 callers.
 def classify(facts):
-    if facts["panic"]:
-        return "GUEST_KERNEL_PANIC"
-    if facts["external_signal"] is not None:
-        return "EXTERNAL_SIGNAL"
-    if facts["launcher_exit"] is not None and not facts["qemu_identified"] and facts["launcher_exit"] != 0:
-        return "REIMS_FATAL"
-    if facts["qemu_exit"] is not None and facts["qemu_exit"] != 0:
-        return "QEMU_FATAL"
-    if facts["appliance_state"] == "installed" and "RESET" in facts["qmp_events"]:
-        return "GUEST_REBOOT"
-    if "SHUTDOWN" in facts["qmp_events"]:
-        return "GUEST_SHUTDOWN"
-    return "UNKNOWN_EXIT"
+    return classify_session(facts)["classification"]
+
+
+def transition_recovery():
+    root = Path(os.environ.get("REIMS_STATE_ROOT", "/var/lib/reims"))
+    state_path = root / "state.json"
+    if not state_path.exists():
+        return {"required": True, "attempted": False, "succeeded": False,
+                "error": "state_unavailable"}
+    script = Path(__file__).with_name("reims-state.py")
+    try:
+        result = subprocess.run([sys.executable, str(script), "transition", "recovery"],
+                                env=os.environ.copy(), capture_output=True, text=True)
+    except OSError as exc:
+        return {"required": True, "attempted": True, "succeeded": False, "error": str(exc)}
+    if result.returncode == 0:
+        return {"required": True, "attempted": True, "succeeded": True, "error": None}
+    return {"required": True, "attempted": True, "succeeded": False,
+            "error": (result.stderr or result.stdout or "transition failed").strip()}
+
 
 def run(args):
     started = now()
@@ -106,7 +168,8 @@ def run(args):
         "qemu_pid": None, "qemu_proc": None, "serial_path": None,
         "serial_ambiguous": False, "qmp_available": False,
         "qmp_handshake_failed": False, "qmp_protocol_error": False, "qmp_socket": None,
-        "qmp_events": [], "qmp_raw": [],
+        "qmp_events": [], "qmp_raw": [], "qemu_runtime_log_offset": None,
+        "qemu_log_text": "", "panic_context": [], "host_kernel_log_available": False,
     }
     log_event(lifecycle, "supervisor", "session_start", session_id=session_id,
               vm_id=args.vm_id, appliance_state=args.appliance_state)
@@ -136,7 +199,12 @@ def run(args):
             facts["qemu_identified"] = True
             facts["qemu_pid"] = pid
             facts["qemu_proc"] = proc_evidence(pid)
-            log_event(lifecycle, "process", "qemu_identified", qemu_pid=pid, proc=facts["qemu_proc"])
+            try:
+                facts["qemu_runtime_log_offset"] = qemu_log.stat().st_size
+            except OSError:
+                facts["qemu_runtime_log_offset"] = 0
+            log_event(lifecycle, "process", "qemu_identified", qemu_pid=pid, proc=facts["qemu_proc"],
+                      qemu_runtime_log_offset=facts["qemu_runtime_log_offset"])
         elif len(candidates) > 1:
             log_event(lifecycle, "process", "qemu_pid_ambiguous", candidates=candidates)
 
@@ -293,11 +361,18 @@ def run(args):
         serial_text = facts["serial_path"].read_text(errors="replace")
         if PANIC in serial_text:
             facts["panic"] = True
+            lines = serial_text.splitlines()
+            marker_index = next((i for i, line in enumerate(lines) if PANIC in line), 0)
+            context = lines[max(0, marker_index - 2):marker_index + 3]
+            facts["panic_context"] = [line for line in context if any(token in line for token in (PANIC, "panic(", "AppleParavirtGPU", "AppleParavirtPageTable", "IOAcceleratorFamily2"))]
         preserved_serial.write_text(serial_text, encoding="utf-8")
     else:
         log_event(lifecycle, "serial", "serial_missing")
     if facts["qemu_identified"]:
         facts["qemu_exit"] = facts["launcher_exit"]
+    facts["qemu_log_text"] = qemu_log.read_text(errors="replace")
+    if facts["qemu_runtime_log_offset"] is None:
+        facts["qemu_runtime_log_offset"] = 0
     limitations = []
     if not facts["qmp_available"]:
         limitations.append("qmp_handshake_failed" if facts["qmp_handshake_failed"] else "qmp_unavailable")
@@ -307,8 +382,16 @@ def run(args):
     if not facts["qemu_identified"] and facts["launcher_had_child"] and facts["qmp_available"]:
         limitations.append("qemu_pid_ambiguous")
     facts["qmp_unavailable"] = not facts["qmp_available"]
-    classification = classify(facts)
-    log_event(lifecycle, "supervisor", "classification", classification=classification)
+    decision = classify_session(facts)
+    classification = decision["classification"]
+    log_event(lifecycle, "supervisor", "classification", classification=classification,
+              reason=decision["classification_reason"], primary_evidence=decision["primary_evidence"])
+    recovery = {"required": decision["recovery_required"], "attempted": False,
+                "succeeded": None, "error": None}
+    if recovery["required"]:
+        recovery = transition_recovery()
+        if not recovery["succeeded"]:
+            limitations.append("recovery_transition_failed")
     evidence = []
     if facts["panic"]: evidence.append("serial:" + PANIC)
     if facts["external_signal"]: evidence.append("signal:" + facts["external_signal"])
@@ -327,7 +410,14 @@ def run(args):
                        "preserved": str(preserved_serial) if preserved_serial.exists() else None,
                        "panic_detected": facts["panic"]},
             "process": {"launcher_had_child": facts["launcher_had_child"], "qemu": facts["qemu_proc"]},
-            "evidence": evidence, "limitations": limitations}
+            "evidence": evidence, "limitations": limitations,
+            "classification_reason": decision["classification_reason"],
+            "primary_evidence": decision["primary_evidence"],
+            "sources_consulted": decision["sources_consulted"],
+            "recovery_required": decision["recovery_required"], "recovery": recovery,
+            "diagnostics": {"panic_context": facts["panic_context"],
+                            "qemu_runtime_log_offset": facts["qemu_runtime_log_offset"],
+                            "host_kernel_log_source": "UNAVAILABLE"}}
     atomic(result_path, data)
     latest = root / "latest"
     temp_latest = root / (".latest-" + session_id)
