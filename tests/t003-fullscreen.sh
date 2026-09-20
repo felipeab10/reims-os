@@ -22,10 +22,11 @@ launch(){ env "$@" bash "$ROOT/scripts/reims-launch.sh" --dry-run; }
 [[ "$(REIMS_VGPU_FULLSCREEN='' bash "$ROOT/scripts/reims-launch.sh" --dry-run | grep '^REIMS_VGPU_FULLSCREEN=')" == REIMS_VGPU_FULLSCREEN= ]]; echo PRODUCT_LAUNCH_FULLSCREEN_EMPTY_PRESERVED=PASS
 ( unset REIMS_VGPU_FULLSCREEN; source "$ROOT/scripts/reims-vm-manager.sh"; [[ "$REIMS_VGPU_FULLSCREEN" == 1 ]] ); echo PRODUCT_MANAGER_FULLSCREEN_DEFAULT=PASS
 ( export REIMS_VGPU_FULLSCREEN=0; source "$ROOT/scripts/reims-vm-manager.sh"; [[ "$REIMS_VGPU_FULLSCREEN" == 0 ]] ); echo PRODUCT_MANAGER_FULLSCREEN_OVERRIDE_OFF=PASS
-! grep -q reims_resolve_fullscreen "$ROOT/components/reims-vgpu/vm/boot-x86.sh"
-test ! -e "$ROOT/components/reims-vgpu/scripts/reims-fullscreen-env.sh"
+if grep -q reims_resolve_fullscreen "$ROOT/components/reims-vgpu/vm/boot-x86.sh"; then echo "ERROR: component still owns fullscreen product policy" >&2; exit 1; fi
+if [ -e "$ROOT/components/reims-vgpu/scripts/reims-fullscreen-env.sh" ]; then echo "ERROR: component fullscreen policy helper still exists" >&2; exit 1; fi
 grep -q REIMS_VGPU_FULLSCREEN "$ROOT/components/reims-vgpu/vm/boot-x86.sh"
 echo COMPONENT_FULLSCREEN_POLICY_ABSENT=PASS
-grep -Rqs REIMS_VGPU_FULLSCREEN "$ROOT/components/reims-vgpu/crates/reims-vgpu" && grep -RqsE 'Fullscreen::Borderless|WindowMode::Borderless' "$ROOT/components/reims-vgpu/crates/reims-vgpu"
+grep -Rqs REIMS_VGPU_FULLSCREEN "$ROOT/components/reims-vgpu/crates/reims-vgpu"
+grep -RqsE 'Fullscreen::Borderless|WindowMode::Borderless' "$ROOT/components/reims-vgpu/crates/reims-vgpu"
 echo NATIVE_FULLSCREEN_IMPLEMENTATION_PRESENT=PASS
 echo T003_FULLSCREEN_CONTROLLED_TEST_PASS

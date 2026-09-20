@@ -13,10 +13,10 @@ check_resources() {
   local cores=$1 ram=$2 disk=$3
   [[ "$cores" =~ ^[0-9]+$ && "$ram" =~ ^[0-9]+$ && "$disk" =~ ^[0-9]+$ ]] && ((cores > 0 && cores <= HOST_CORES && ram >= 2 && ram <= HOST_RAM && disk >= 70))
 }
-! check_resources 4 8 69
+if check_resources 4 8 69; then echo "ERROR: disk below 70 GiB was accepted" >&2; exit 1; fi
 check_resources 4 8 70
-! check_resources 0 8 70
-! check_resources 4 1 70
+if check_resources 0 8 70; then echo "ERROR: zero CPUs were accepted" >&2; exit 1; fi
+if check_resources 4 1 70; then echo "ERROR: RAM below 2 GiB was accepted" >&2; exit 1; fi
 UUID_FILE=$(mktemp)
 echo 0 > "$UUID_FILE"
 uuidgen() { local n; n=$(cat "$UUID_FILE"); n=$((n+1)); echo "$n" > "$UUID_FILE"; if ((n == 1)); then echo 11111111-1111-1111-1111-111111111111; else echo 22222222-2222-2222-2222-222222222222; fi; }
@@ -64,7 +64,7 @@ chmod +x "$SUCCESS_BUILDER"
 if REIMS_T002_BUILDER="$SUCCESS_BUILDER" run_opencore_builder "$WORK_ROOT/reims-2222222222222222" "$TMP" "$TMP/none" > "$TMP/success.log" 2>&1; then :; else exit 1; fi
 grep -q "state=running" "$TMP/success.log"
 grep -q "state=completed" "$TMP/success.log"
-! grep -q "state=failed" "$TMP/success.log"
+if grep -q "state=failed" "$TMP/success.log"; then echo "ERROR: successful builder emitted failed state" >&2; exit 1; fi
 grep -q fetch-marker "$WORK_ROOT/reims-2222222222222222/run/provision.log"
 grep -q "builder simulated success" "$WORK_ROOT/reims-2222222222222222/run/provision.log"
 echo PROGRESS_OPENCORE_SUCCESS=PASS
@@ -76,7 +76,7 @@ if REIMS_T002_BUILDER="$TEST_BUILDER" run_opencore_builder "$WORK_ROOT/reims-222
 [[ $rc -eq 17 ]]
 grep -q "state=running" "$TMP/failure.log"
 grep -q "state=failed" "$TMP/failure.log"
-! grep -q "state=completed" "$TMP/failure.log"
+if grep -q "state=completed" "$TMP/failure.log"; then echo "ERROR: failed builder emitted completed state" >&2; exit 1; fi
 grep -q "builder simulated failure" "$WORK_ROOT/reims-2222222222222222/run/provision.log"
 echo PROGRESS_OPENCORE_SUCCESS=PASS
 echo PROGRESS_OPENCORE_FAILURE=PASS
