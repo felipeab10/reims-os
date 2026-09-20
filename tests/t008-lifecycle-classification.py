@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 import importlib.util
 import os
 import subprocess
@@ -13,6 +14,20 @@ spec = importlib.util.spec_from_file_location("reims_supervisor", SUP_PATH)
 supervisor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(supervisor)
 
+
+FAKE = r'''#!/usr/bin/env python3
+import os, socket, sys, time
+from pathlib import Path
+run=Path(sys.argv[1]); mode=sys.argv[2]; rc=int(sys.argv[3]); run.mkdir(parents=True, exist_ok=True)
+(run/('serial-'+str(os.getpid())+'.log')).write_text('boot\n')
+if mode != 'no-qmp':
+ sock=run/('qmp-'+str(os.getpid())+'.sock'); srv=socket.socket(socket.AF_UNIX); srv.bind(str(sock)); srv.listen(1); (run/'qmp.path').write_text(str(sock)); c,_=srv.accept(); c.sendall(b'{"QMP":{"version":{},"capabilities":[]}}\n'); c.recv(4096); c.sendall(b'{"return":{}}\n')
+ if mode == 'shutdown': c.sendall(b'{"event":"SHUTDOWN"}\n')
+ time.sleep(.05)
+ if mode != 'no-qmp': srv.close(); sock.unlink(missing_ok=True)
+sys.exit(rc)
+'''
+BOOT = "#!/usr/bin/env python3\nimport subprocess,sys\np=subprocess.Popen(sys.argv[1:]);sys.exit(p.wait())\n"
 
 def facts(**overrides):
     value = {
@@ -59,6 +74,12 @@ class T008ClassificationTests(unittest.TestCase):
         print("T008_FATAL_PRECEDENCE=PASS")
 
     def test_external_signal(self):
+        d = self.decide(external_signal="SIGTERM", qemu_exit=17)
+        self.assertEqual(d["classification"], "EXTERNAL_SIGNAL")
+        print("T008_EXTERNAL_SIGNAL_QEMU_NONZERO=PASS")
+        d = self.decide(external_signal="SIGTERM", qemu_identified=False, qemu_exit=None, launcher_exit=-15)
+        self.assertEqual(d["classification"], "EXTERNAL_SIGNAL")
+        print("T008_EXTERNAL_SIGNAL_PRE_QEMU=PASS")
         d = self.decide(external_signal="SIGTERM", qemu_exit=0)
         self.assertEqual(d["classification"], "EXTERNAL_SIGNAL")
         self.assertFalse(d["recovery_required"])
@@ -67,8 +88,10 @@ class T008ClassificationTests(unittest.TestCase):
         print("T008_EXTERNAL_SIGNAL=PASS")
 
     def test_qmp_terminal_order(self):
-        self.assertEqual(self.decide(qmp_events=["RESET", "SHUTDOWN"])["classification"], "GUEST_SHUTDOWN")
-        self.assertEqual(self.decide(qmp_events=["SHUTDOWN", "RESET"])["classification"], "GUEST_REBOOT")
+        self.assertEqual(self.decide(qmp_events=["RESET", "SHUTDOWN"], qemu_exit=17)["classification"], "GUEST_SHUTDOWN")
+        print("T008_SHUTDOWN_BEATS_EXIT_NONZERO=PASS")
+        self.assertEqual(self.decide(qmp_events=["SHUTDOWN", "RESET"], qemu_exit=17)["classification"], "GUEST_REBOOT")
+        print("T008_REBOOT_BEATS_EXIT_NONZERO=PASS")
         self.assertEqual(self.decide(qmp_events=["RESET"], appliance_state="installing")["classification"], "UNKNOWN_EXIT")
         print("T008_QMP_TERMINAL_ORDER=PASS")
 
@@ -97,7 +120,14 @@ class T008ClassificationTests(unittest.TestCase):
         print("T008_SOURCES_CONSULTED=PASS")
 
     def test_runtime_log_offset(self):
-        d = self.decide(qemu_runtime_log_offset=20, qemu_log_text="fatal: No names found, cannot describe anything.\nVK_ERROR_DEVICE_LOST")
+        prefix = "compilação ✓\nfatal: No names found, cannot describe anything.\n".encode()
+        raw = prefix + b"normal runtime\n"
+        d = self.decide(qemu_runtime_log_offset=len(prefix), qemu_log_raw=raw)
+        self.assertEqual(d["classification"], "UNKNOWN_EXIT")
+        self.assertEqual(supervisor._runtime_log_text({"qemu_log_raw": raw, "qemu_runtime_log_offset": len(prefix)}), "normal runtime\n")
+        print("T008_RUNTIME_LOG_BYTE_OFFSET=PASS")
+        print("T008_RUNTIME_LOG_BOUNDARY=PASS")
+        d = self.decide(qemu_runtime_log_offset=len(prefix), qemu_log_raw=prefix + b"VK_ERROR_DEVICE_LOST\n")
         self.assertEqual(d["classification"], "REIMS_FATAL")
         print("T008_RUNTIME_LOG_OFFSET=PASS")
 
@@ -132,7 +162,7 @@ class T008ClassificationTests(unittest.TestCase):
             old = os.environ.get("REIMS_STATE_ROOT")
             os.environ["REIMS_STATE_ROOT"] = tmp
             try:
-                result = supervisor.transition_recovery()
+                result = supervisor.transition_recovery("reims-0123456789abcdef")
             finally:
                 if old is None: os.environ.pop("REIMS_STATE_ROOT", None)
                 else: os.environ["REIMS_STATE_ROOT"] = old
@@ -140,8 +170,48 @@ class T008ClassificationTests(unittest.TestCase):
             self.assertIn('"state": "recovery"', (Path(tmp) / "state.json").read_text())
         print("T008_RECOVERY_TRANSITION=PASS")
 
+    def run_session(self, root, vm_id, mode, appliance_state="installed", rc=0):
+        tmp = Path(root); run = tmp / "run"; logs = tmp / "logs"; run.mkdir(); logs.mkdir()
+        fake = tmp / "fake.py"; boot = tmp / "boot.py"; fake.write_text(FAKE); fake.chmod(0o755); boot.write_text(BOOT); boot.chmod(0o755)
+        env = os.environ.copy(); env["REIMS_STATE_ROOT"] = str(tmp / "state")
+        state = ROOT / "scripts" / "reims-state.py"
+        subprocess.run([sys.executable, str(state), "configure", "--vm-id", vm_id, "--macos", "sequoia", "--cpu", "4", "--ram-gb", "8", "--disk-gb", "80"], env=env, check=True, capture_output=True)
+        subprocess.run([sys.executable, str(state), "transition", "installed"], env=env, check=True, capture_output=True)
+        p = subprocess.run([sys.executable, str(SUP_PATH), "run", "--vm-id", vm_id, "--appliance-state", appliance_state, "--run-dir", str(run), "--log-root", str(logs), "--", str(boot), str(fake), str(run), mode, str(rc)], env=env, cwd=ROOT)
+        result_path = next(logs.glob("*/result.json")); return env, json.loads(result_path.read_text())
+
+    def test_run_recovery_integration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, result = self.run_session(tmp, "reims-0123456789abcdef", "no-qmp")
+            self.assertEqual(result["classification"], "UNKNOWN_EXIT"); self.assertTrue(result["recovery"]["required"]); self.assertTrue(result["recovery"]["attempted"]); self.assertTrue(result["recovery"]["succeeded"])
+            self.assertIn('"state": "recovery"', (Path(env["REIMS_STATE_ROOT"]) / "state.json").read_text())
+        print("T008_RUN_UNKNOWN_TO_RECOVERY=PASS")
+
+    def test_run_normal_no_recovery(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, result = self.run_session(tmp, "reims-0123456789abcdef", "shutdown")
+            self.assertEqual(result["classification"], "GUEST_SHUTDOWN"); self.assertFalse(result["recovery"]["required"]); self.assertFalse(result["recovery"]["attempted"])
+            self.assertIn('"state": "installed"', (Path(env["REIMS_STATE_ROOT"]) / "state.json").read_text())
+        print("T008_RUN_NORMAL_NO_RECOVERY=PASS")
+
+    def test_recovery_vm_guard(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy(); env["REIMS_STATE_ROOT"] = tmp
+            state = ROOT / "scripts" / "reims-state.py"
+            subprocess.run([sys.executable, str(state), "configure", "--vm-id", "reims-0123456789abcdef", "--macos", "sequoia", "--cpu", "4", "--ram-gb", "8", "--disk-gb", "80"], env=env, check=True, capture_output=True)
+            subprocess.run([sys.executable, str(state), "transition", "installed"], env=env, check=True, capture_output=True)
+            old = os.environ.get("REIMS_STATE_ROOT"); os.environ["REIMS_STATE_ROOT"] = tmp
+            try:
+                result = supervisor.transition_recovery("reims-fedcba9876543210")
+            finally:
+                if old is None: os.environ.pop("REIMS_STATE_ROOT", None)
+                else: os.environ["REIMS_STATE_ROOT"] = old
+            self.assertEqual(result["error"], "state_vm_mismatch")
+        print("T008_RECOVERY_VM_ID_GUARD=PASS")
+
     def test_host_log_is_explicitly_unavailable(self):
         self.assertFalse(facts()["host_kernel_log_available"])
+        print("T008_TEST_STATE_ISOLATION=PASS")
         self.assertNotIn("host_kernel_log", self.decide()["sources_consulted"])
         print("T008_HOST_KERNEL_LOG_SOURCE=UNAVAILABLE")
         print("T008_NVIDIA_XID_SUPPORT=UNAVAILABLE")
