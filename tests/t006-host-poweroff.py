@@ -172,16 +172,98 @@ class T006HostPoweroffTests(unittest.TestCase):
         subprocess.run([sys.executable, str(state), "configure", "--vm-id", "reims-0123456789abcdef", "--macos", "sequoia", "--cpu", "4", "--ram-gb", "8", "--disk-gb", "80"], env=env, check=True, capture_output=True)
         subprocess.run([sys.executable, str(state), "transition", "installed"], env=env, check=True, capture_output=True)
         proc = subprocess.run([sys.executable, str(ROOT / "scripts/reims-supervisor.py"), "run", "--vm-id", "reims-0123456789abcdef", "--appliance-state", "installed", "--run-dir", str(run), "--log-root", str(logs), "--", str(boot), str(fake), str(run), "shutdown", "0", "0.15", "0"], env=env, cwd=ROOT, capture_output=True, text=True)
-        session = next(logs.glob("*/result.json")).parent; result = json.loads((session / "result.json").read_text()); audit = json.loads((session / "host-action.json").read_text())
-        if result["classification"] != "GUEST_SHUTDOWN": raise AssertionError(json.dumps({"result": result, "stderr": proc.stderr, "stdout": proc.stdout}, indent=2)); self.assertEqual(audit["status"], "WOULD_POWEROFF")
-        events = [json.loads(line)["event"] for line in (session / "lifecycle.log").read_text().splitlines()]; self.assertLess(events.index("classification"), events.index("WOULD_POWEROFF"))
+        session = next(logs.glob("*/result.json")).parent
+        result_path = session / "result.json"
+        host_action_path = session / "host-action.json"
+        self.assertTrue(result_path.exists())
+        result = json.loads(result_path.read_text())
+        if result["classification"] != "GUEST_SHUTDOWN":
+            raise AssertionError(json.dumps({"result": result, "stderr": proc.stderr, "stdout": proc.stdout}, indent=2))
+        self.assertEqual(proc.returncode, 0)
+        self.assertTrue(host_action_path.exists())
+        audit = json.loads(host_action_path.read_text())
+        self.assertEqual(audit["status"], "WOULD_POWEROFF")
+        self.assertEqual(audit["classification"], "GUEST_SHUTDOWN")
+        self.assertEqual(audit["appliance_state"], "installed")
+        events = [json.loads(line)["event"] for line in (session / "lifecycle.log").read_text().splitlines()]
+        self.assertLess(events.index("classification"), events.index("WOULD_POWEROFF"))
+        self.assertEqual(events.count("WOULD_POWEROFF"), 1)
         print("T006_SUPERVISOR_INTEGRATION=PASS"); print("T006_RESULT_BEFORE_ACTION=PASS"); print("T006_CLASSIFICATION_BEFORE_ACTION=PASS")
 
     def test_supervisor_unknown_no_poweroff(self):
-        self.write_result(classification="UNKNOWN_EXIT", state="installed")
-        result = action.consume(self.result_path, mode="dry-run")
-        self.assertEqual(result["status"], "NO_ACTION")
+        fake = self.session.parent / "fake.py"
+        fake.write_text(t005_fixture.FAKE)
+        fake.chmod(0o755)
+        boot = self.session.parent / "boot.py"; boot.write_text(t005_fixture.BOOT); boot.chmod(0o755)
+        run = self.session.parent / "run"; logs = self.session.parent / "logs"; run.mkdir(); logs.mkdir()
+        env = os.environ.copy(); env["REIMS_STATE_ROOT"] = str(self.session.parent / "state"); env["REIMS_HOST_ACTION_MODE"] = "dry-run"
+        state = ROOT / "scripts" / "reims-state.py"
+        vm_id = "reims-0123456789abcdef"
+        subprocess.run([sys.executable, str(state), "configure", "--vm-id", vm_id, "--macos", "sequoia", "--cpu", "4", "--ram-gb", "8", "--disk-gb", "80"], env=env, check=True, capture_output=True)
+        subprocess.run([sys.executable, str(state), "transition", "installed"], env=env, check=True, capture_output=True)
+        proc = subprocess.run([sys.executable, str(ROOT / "scripts/reims-supervisor.py"), "run", "--vm-id", vm_id, "--appliance-state", "installed", "--run-dir", str(run), "--log-root", str(logs), "--", str(boot), str(fake), str(run), "no-qmp", "0", "0.15", "0"], env=env, cwd=ROOT, capture_output=True, text=True)
+        session = next(logs.glob("*/result.json")).parent
+        result_path = session / "result.json"; host_action_path = session / "host-action.json"
+        self.assertEqual(proc.returncode, 0)
+        self.assertTrue(result_path.exists()); result = json.loads(result_path.read_text())
+        self.assertEqual(result["classification"], "UNKNOWN_EXIT")
+        self.assertTrue(host_action_path.exists()); audit = json.loads(host_action_path.read_text())
+        self.assertEqual(audit["status"], "NO_ACTION")
+        events = [json.loads(line)["event"] for line in (session / "lifecycle.log").read_text().splitlines()]
+        self.assertNotIn("WOULD_POWEROFF", events)
+        self.assertFalse((session / "host-action.claim").exists())
         print("T006_SUPERVISOR_UNKNOWN_NO_POWEROFF=PASS")
+
+    def test_consumer_failure_preserves_result_and_rc(self):
+        fake = self.session.parent / "fake.py"
+        fake.write_text(t005_fixture.FAKE)
+        fake.chmod(0o755)
+        boot = self.session.parent / "boot.py"; boot.write_text(t005_fixture.BOOT); boot.chmod(0o755)
+        fake_bin = self.session.parent / "bin"; fake_bin.mkdir()
+        systemctl_log = self.session.parent / "systemctl.argv"
+        fake_systemctl = fake_bin / "systemctl"
+        fake_systemctl.write_text("#!/bin/sh\nprintf '%s\n' \"$@\" > \"$SYSTEMCTL_LOG\"\nexit 77\n")
+        fake_systemctl.chmod(0o755)
+        run = self.session.parent / "run"; logs = self.session.parent / "logs"; run.mkdir(); logs.mkdir()
+        env = os.environ.copy()
+        env["REIMS_STATE_ROOT"] = str(self.session.parent / "state")
+        env["REIMS_HOST_ACTION_MODE"] = "systemd"
+        env["SYSTEMCTL_LOG"] = str(systemctl_log)
+        env["PATH"] = str(fake_bin) + os.pathsep + env["PATH"]
+        state = ROOT / "scripts" / "reims-state.py"
+        vm_id = "reims-0123456789abcdef"
+        subprocess.run([sys.executable, str(state), "configure", "--vm-id", vm_id, "--macos", "sequoia", "--cpu", "4", "--ram-gb", "8", "--disk-gb", "80"], env=env, check=True, capture_output=True)
+        subprocess.run([sys.executable, str(state), "transition", "installed"], env=env, check=True, capture_output=True)
+        proc = subprocess.run([sys.executable, str(ROOT / "scripts/reims-supervisor.py"), "run", "--vm-id", vm_id, "--appliance-state", "installed", "--run-dir", str(run), "--log-root", str(logs), "--", str(boot), str(fake), str(run), "shutdown", "0", "0.15", "0"], env=env, cwd=ROOT, capture_output=True, text=True)
+        session = next(logs.glob("*/result.json")).parent
+        result_path = session / "result.json"; host_action_path = session / "host-action.json"
+        self.assertEqual(proc.returncode, 0)
+        self.assertTrue(result_path.exists())
+        result = json.loads(result_path.read_text())
+        self.assertEqual(result["classification"], "GUEST_SHUTDOWN")
+        self.assertEqual(result["classification_reason"], "qmp_shutdown")
+        self.assertTrue(host_action_path.exists())
+        audit = json.loads(host_action_path.read_text())
+        self.assertEqual(audit["status"], "HOST_POWEROFF_FAILED")
+        self.assertIn("77", audit["error"])
+        self.assertTrue(systemctl_log.exists())
+        self.assertEqual(systemctl_log.read_text().splitlines(), ["poweroff"])
+        events = [json.loads(line)["event"] for line in (session / "lifecycle.log").read_text().splitlines()]
+        for event in ("classification", "HOST_POWEROFF_REQUESTED", "HOST_POWEROFF_FAILED", "HOST_ACTION_CONSUMER_FAILED"):
+            self.assertIn(event, events)
+        self.assertLess(events.index("classification"), events.index("HOST_POWEROFF_REQUESTED"))
+        self.assertLess(events.index("HOST_POWEROFF_REQUESTED"), events.index("HOST_POWEROFF_FAILED"))
+        self.assertLess(events.index("HOST_POWEROFF_FAILED"), events.index("HOST_ACTION_CONSUMER_FAILED"))
+        print("T006_CONSUMER_FAILURE_PRESERVES_RESULT=PASS")
+        print("T006_CONSUMER_FAILURE_PRESERVES_RC=PASS")
+        print("T006_CONSUMER_FAILURE_FAKE_SYSTEMCTL=PASS")
+
+    def test_regression_harnesses_force_disabled(self):
+        t005 = (ROOT / "tests/t005-supervisor.py").read_text()
+        t008 = (ROOT / "tests/t008-lifecycle-classification.py").read_text()
+        self.assertIn("REIMS_HOST_ACTION_MODE']='disabled'", t005)
+        self.assertIn('REIMS_HOST_ACTION_MODE"] = "disabled"', t008)
+        print("T006_REGRESSION_HOST_ACTION_DISABLED=PASS")
 
     def test_invalid_result_safe(self):
         self.result_path.write_text("not json")
