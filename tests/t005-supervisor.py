@@ -45,7 +45,8 @@ class SupervisorTests(unittest.TestCase):
     def setUp(self):
         self.tmp=Path(tempfile.mkdtemp()); self.run=self.tmp/'run'; self.logs=self.tmp/'logs'; self.state_root=self.tmp/'state'
         self.fake=self.tmp/'fake-qemu.py'; self.boot=self.tmp/'boot.sh'; write_exec(self.fake,FAKE); write_exec(self.boot,BOOT)
-        self.env=os.environ.copy(); self.env['REIMS_STATE_ROOT']=str(self.state_root)
+        self.env=os.environ.copy(); self.env['REIMS_STATE_ROOT']=str(self.state_root); self.env['REIMS_HOST_ACTION_MODE']='disabled'
+        if self.env['REIMS_HOST_ACTION_MODE'] != 'disabled': raise AssertionError('unsafe host action test environment')
         self.assertTrue(Path(self.env['REIMS_STATE_ROOT']).is_relative_to(self.tmp))
     def tearDown(self):
         import shutil; shutil.rmtree(self.tmp, ignore_errors=True)
