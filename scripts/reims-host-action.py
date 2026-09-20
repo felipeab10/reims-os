@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Consume a persisted T008 result and optionally request host poweroff."""
+"""Consume a persisted T008 result and optionally request a host lifecycle action."""
 import argparse
 import datetime as dt
 import json
@@ -10,7 +10,11 @@ import tempfile
 from pathlib import Path
 
 ALLOWED_MODES = {"disabled", "dry-run", "systemd"}
-ELIGIBLE = "GUEST_SHUTDOWN"
+ELIGIBLE = {"GUEST_SHUTDOWN": "poweroff", "GUEST_REBOOT": "reboot"}
+ACTION_STATUSES = {
+    "poweroff": {"WOULD_POWEROFF", "HOST_POWEROFF_REQUESTED", "HOST_POWEROFF_FAILED"},
+    "reboot": {"WOULD_REBOOT", "HOST_REBOOT_REQUESTED", "HOST_REBOOT_FAILED"},
+}
 
 def now():
     return dt.datetime.now(dt.timezone.utc).isoformat()
@@ -43,7 +47,7 @@ def _audit(session, result, mode, status, error=None):
         "session_id": result.get("session_id", session.name),
         "classification": result.get("classification"),
         "appliance_state": result.get("appliance_state"),
-        "action": "poweroff" if status in {"WOULD_POWEROFF", "HOST_POWEROFF_REQUESTED", "HOST_POWEROFF_FAILED"} else "none",
+        "action": next((action for action, statuses in ACTION_STATUSES.items() if status in statuses), "none"),
         "mode": mode,
         "status": status,
         "timestamp": now(),
@@ -97,8 +101,8 @@ def consume(result_path, mode=None, executor=None, sync_fn=None):
         audit = _audit(session, result, mode, "NO_ACTION", "unknown_mode")
         append_event(lifecycle, "HOST_ACTION_INVALID_MODE", mode=mode)
         return audit
-    eligible = (result["classification"] == ELIGIBLE and
-                result["appliance_state"] == "installed" and
+    action = ELIGIBLE.get(result["classification"])
+    eligible = (action is not None and result["appliance_state"] == "installed" and
                 result["recovery_required"] is False)
     if not eligible:
         audit = _audit(session, result, mode, "NO_ACTION", "not_eligible")
@@ -106,7 +110,7 @@ def consume(result_path, mode=None, executor=None, sync_fn=None):
         return audit
     if mode == "disabled":
         audit = _audit(session, result, mode, "HOST_ACTION_DISABLED")
-        append_event(lifecycle, "HOST_ACTION_DISABLED")
+        append_event(lifecycle, "HOST_ACTION_DISABLED", action=action)
         return audit
     if not _claim(session):
         existing = _existing_audit(session)
@@ -117,23 +121,26 @@ def consume(result_path, mode=None, executor=None, sync_fn=None):
             return response
         return {"status": "ALREADY_CLAIMED"}
     if mode == "dry-run":
-        audit = _audit(session, result, mode, "WOULD_POWEROFF")
-        append_event(lifecycle, "WOULD_POWEROFF")
+        status = "WOULD_" + action.upper()
+        audit = _audit(session, result, mode, status)
+        append_event(lifecycle, status)
         return audit
-    audit = _audit(session, result, mode, "HOST_POWEROFF_REQUESTED")
-    append_event(lifecycle, "HOST_POWEROFF_REQUESTED")
+    requested = "HOST_" + action.upper() + "_REQUESTED"
+    failed = "HOST_" + action.upper() + "_FAILED"
+    audit = _audit(session, result, mode, requested)
+    append_event(lifecycle, requested)
     try:
         (sync_fn if sync_fn is not None else os.sync)()
     except Exception as exc:
         error = "sync_failed: " + str(exc)
-        audit = _audit(session, result, mode, "HOST_POWEROFF_FAILED", error)
-        append_event(lifecycle, "HOST_POWEROFF_FAILED", error=error)
+        audit = _audit(session, result, mode, failed, error)
+        append_event(lifecycle, failed, error=error)
         return audit
     try:
-        (executor or subprocess.run)(["systemctl", "poweroff"], check=True)
+        (executor or subprocess.run)(["systemctl", action], check=True)
     except Exception as exc:
-        audit = _audit(session, result, mode, "HOST_POWEROFF_FAILED", str(exc))
-        append_event(lifecycle, "HOST_POWEROFF_FAILED", error=str(exc))
+        audit = _audit(session, result, mode, failed, str(exc))
+        append_event(lifecycle, failed, error=str(exc))
     return audit
 
 def main():
@@ -141,7 +148,7 @@ def main():
     parser.add_argument("result_json", type=Path)
     args = parser.parse_args()
     audit = consume(args.result_json)
-    return 0 if audit["status"] != "HOST_POWEROFF_FAILED" else 1
+    return 0 if audit["status"] not in {"HOST_POWEROFF_FAILED", "HOST_REBOOT_FAILED"} else 1
 
 if __name__ == "__main__":
     sys.exit(main())

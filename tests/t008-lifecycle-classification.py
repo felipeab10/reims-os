@@ -22,7 +22,7 @@ run=Path(sys.argv[1]); mode=sys.argv[2]; rc=int(sys.argv[3]); run.mkdir(parents=
 (run/('serial-'+str(os.getpid())+'.log')).write_text('boot\n')
 if mode != 'no-qmp':
  sock=run/('qmp-'+str(os.getpid())+'.sock'); srv=socket.socket(socket.AF_UNIX); srv.bind(str(sock)); srv.listen(1); (run/'qmp.path').write_text(str(sock)); c,_=srv.accept(); c.sendall(b'{"QMP":{"version":{},"capabilities":[]}}\n'); c.recv(4096); c.sendall(b'{"return":{}}\n')
- if mode == 'shutdown': c.sendall(b'{"event":"SHUTDOWN"}\n')
+ if mode == 'shutdown': c.sendall(b'{"event":"SHUTDOWN","data":{"guest":true,"reason":"guest-shutdown"}}\n')
  time.sleep(.05)
  if mode != 'no-qmp': srv.close(); sock.unlink(missing_ok=True)
 sys.exit(rc)
@@ -33,10 +33,13 @@ def facts(**overrides):
     value = {
         "panic": False, "external_signal": None, "launcher_exit": 0,
         "qemu_exit": 0, "qemu_identified": True, "appliance_state": "installed",
-        "qmp_events": [], "qemu_log_text": "", "qemu_runtime_log_offset": 0,
+        "qmp_events": [], "qmp_raw": [], "qemu_log_text": "", "qemu_runtime_log_offset": 0,
         "host_kernel_log_available": False,
     }
     value.update(overrides)
+    if not value["qmp_raw"] and value["qmp_events"]:
+        reasons = {"SHUTDOWN": "guest-shutdown", "RESET": "guest-reset"}
+        value["qmp_raw"] = [{"event": event, "data": {"guest": True, "reason": reasons.get(event)}} for event in value["qmp_events"]]
     return value
 
 
@@ -45,10 +48,29 @@ class T008ClassificationTests(unittest.TestCase):
         return supervisor.classify_session(facts(**kwargs))
 
     def test_shutdown_classification(self):
-        d = self.decide(qmp_events=["SHUTDOWN"])
+        d = self.decide(qmp_raw=[{"event":"SHUTDOWN","data":{"guest":True,"reason":"guest-shutdown"}}], qmp_events=["SHUTDOWN"])
         self.assertEqual(d["classification"], "GUEST_SHUTDOWN")
+        self.assertEqual(d["classification_reason"], "qmp_guest_shutdown")
+        self.assertEqual(d["primary_evidence"], {"source":"qmp","event":"SHUTDOWN","guest":True,"reason":"guest-shutdown"})
         self.assertFalse(d["recovery_required"])
         print("T008_SHUTDOWN_CLASSIFICATION=PASS")
+
+    def test_shutdown_cause_matrix(self):
+        cases = [
+            ({"event":"SHUTDOWN","data":{"guest":True,"reason":"guest-reset"}}, "installed", "GUEST_REBOOT", "qmp_guest_reset_shutdown"),
+            ({"event":"RESET","data":{"guest":True,"reason":"guest-reset"}}, "installed", "GUEST_REBOOT", "qmp_reset"),
+            ({"event":"SHUTDOWN","data":{"guest":True,"reason":"guest-reset"}}, "installing", "UNKNOWN_EXIT", "qmp_terminal_ambiguous"),
+            ({"event":"SHUTDOWN","data":{"guest":True,"reason":"guest-panic"}}, "installed", "GUEST_KERNEL_PANIC", "qmp_guest_panic"),
+            ({"event":"SHUTDOWN","data":{"guest":False,"reason":"host-error"}}, "installed", "QEMU_FATAL", "qmp_host_error"),
+            ({"event":"SHUTDOWN","data":{"guest":False,"reason":"host-signal"}}, "installed", "EXTERNAL_SIGNAL", "qmp_host_signal"),
+            ({"event":"SHUTDOWN","data":{"guest":False,"reason":"host-ui"}}, "installed", "UNKNOWN_EXIT", "qmp_terminal_ambiguous"),
+            ({"event":"SHUTDOWN","data":{"guest":True}}, "installed", "UNKNOWN_EXIT", "qmp_terminal_ambiguous"),
+        ]
+        for raw, state, classification, reason in cases:
+            d=self.decide(qmp_raw=[raw], qmp_events=[raw["event"]], appliance_state=state)
+            self.assertEqual((d["classification"],d["classification_reason"]),(classification,reason))
+            self.assertNotIn(d["classification"],["GUEST_SHUTDOWN"] if raw["data"].get("reason") != "guest-shutdown" else [])
+        print("T008_GUEST_SHUTDOWN_CAUSE=PASS"); print("T008_GUEST_RESET_AS_SHUTDOWN=PASS"); print("T008_RESET_EVENT_REBOOT=PASS"); print("T008_GUEST_PANIC_CAUSE=PASS"); print("T008_HOST_ERROR_CAUSE=PASS"); print("T008_AMBIGUOUS_SHUTDOWN_SAFE=PASS")
 
     def test_reboot_classification(self):
         d = self.decide(qmp_events=["RESET"])
@@ -118,7 +140,7 @@ class T008ClassificationTests(unittest.TestCase):
 
     def test_primary_evidence_and_sources(self):
         d = self.decide(qmp_events=["SHUTDOWN"])
-        self.assertEqual(d["primary_evidence"], {"source": "qmp", "event": "SHUTDOWN"})
+        self.assertEqual(d["primary_evidence"], {"source": "qmp", "event": "SHUTDOWN", "guest": True, "reason": "guest-shutdown"})
         self.assertEqual(d["sources_consulted"], ["serial", "qmp", "process", "qemu_log", "supervisor_signal"])
         self.assertTrue({"serial", "qmp", "process", "qemu_log", "supervisor_signal"} <= set(d["sources_consulted"]))
         print("T008_PRIMARY_EVIDENCE=PASS")
