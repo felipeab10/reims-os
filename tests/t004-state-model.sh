@@ -88,7 +88,8 @@ import json,os
 d=json.load(open(os.path.join(os.environ['REIMS_STATE_ROOT'],'state.json'))); assert d=={"schema":1,"configured":True,"vm_id":"reims-0123456789abcdef","macos":"sequoia","state":"installing","cpu":8,"ram_gb":16,"disk_gb":80}
 PY
 echo MANAGER_CREATES_INSTALLING_STATE=PASS
-! grep -Eq 'reims-state\.py.*transition.*installed|reims-state\.py.*installed.*transition' "$ROOT/scripts/reims-vm-manager.sh"; echo MANAGER_DOES_NOT_AUTO_INSTALL_STATE=PASS
+if grep -Eq 'reims-state\.py.*transition.*installed|reims-state\.py.*installed.*transition' "$ROOT/scripts/reims-vm-manager.sh"; then echo "ERROR: manager can automatically transition to installed" >&2; exit 1; fi
+echo MANAGER_DOES_NOT_AUTO_INSTALL_STATE=PASS
 TEST_ROOT="$TMP/coherent-root"; rm -rf "$TEST_ROOT"; mkdir -p "$TEST_ROOT"; (export REIMS_STATE_ROOT="$TEST_ROOT"; source "$ROOT/scripts/reims-vm-manager.sh"; [[ "$WORK_ROOT" == "$TEST_ROOT/vms" && "$RAILS_DIR" == "$TEST_ROOT/rails" ]]; run configure --vm-id reims-0123456789abcdef --macos sequoia --cpu 8 --ram-gb 16 --disk-gb 80 >/dev/null; p=$(run paths); grep -q "$TEST_ROOT/vms/reims-0123456789abcdef" <<<"$p"; grep -q "$TEST_ROOT/rails" <<<"$p"); echo STATE_AND_MANAGER_PATHS_COHERENT=PASS
 if (export REIMS_STATE_ROOT="$TMP/A" REIMS_VM_WORK_ROOT="$TMP/B"; source "$ROOT/scripts/reims-vm-manager.sh") 2>"$TMP/divergent.err"; then exit 1; fi; grep -q REIMS_VM_WORK_ROOT "$TMP/divergent.err"; echo DIVERGENT_VM_ROOT_REJECTED=PASS
 test -f "$ROOT/third_party/OSX-KVM/fetch-macOS-v2.py"; test -f "$ROOT/third_party/osx-serial-generator/generate-specific-bootdisk.sh"; test ! -e "$ROOT/components/reims-vgpu/third_party/OSX-KVM/fetch-macOS-v2.py"; test ! -e "$ROOT/components/reims-vgpu/third_party/osx-serial-generator/generate-specific-bootdisk.sh"; echo CANONICAL_APPLIANCE_DEPS=PASS
