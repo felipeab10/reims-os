@@ -123,7 +123,7 @@ def consume(result_path, mode=None, executor=None, sync_fn=None):
     audit = _audit(session, result, mode, "HOST_POWEROFF_REQUESTED")
     append_event(lifecycle, "HOST_POWEROFF_REQUESTED")
     try:
-        (sync_fn or os.sync)()
+        (sync_fn if sync_fn is not None else os.sync)()
     except Exception as exc:
         error = "sync_failed: " + str(exc)
         audit = _audit(session, result, mode, "HOST_POWEROFF_FAILED", error)
