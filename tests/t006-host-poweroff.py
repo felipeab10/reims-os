@@ -249,7 +249,7 @@ class T006HostPoweroffTests(unittest.TestCase):
         self.assertTrue(result_path.exists())
         result = json.loads(result_path.read_text())
         self.assertEqual(result["classification"], "GUEST_SHUTDOWN")
-        self.assertEqual(result["classification_reason"], "qmp_shutdown")
+        self.assertEqual(result["classification_reason"], "qmp_guest_shutdown")
         self.assertTrue(host_action_path.exists())
         audit = json.loads(host_action_path.read_text())
         self.assertEqual(audit["status"], "HOST_POWEROFF_FAILED")

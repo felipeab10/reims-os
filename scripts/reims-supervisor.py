@@ -68,7 +68,20 @@ def proc_evidence(pid):
     return {"pid": pid, "exe": exe, "cmdline": cmdline}
 
 def _qmp_terminal(facts):
-    return next((event for event in reversed(facts.get("qmp_events", [])) if event in ("SHUTDOWN", "RESET")), None)
+    """Return the final structured terminal QMP event, preserving its cause."""
+    for message in reversed(facts.get("qmp_raw", [])):
+        if not isinstance(message, dict) or message.get("event") not in ("SHUTDOWN", "RESET"):
+            continue
+        data = message.get("data") if isinstance(message.get("data"), dict) else {}
+        evidence = {"source": "qmp", "event": message["event"]}
+        for key in ("guest", "reason"):
+            if key in data:
+                evidence[key] = data[key]
+        return evidence
+    for event in reversed(facts.get("qmp_events", [])):
+        if event in ("SHUTDOWN", "RESET"):
+            return {"source": "qmp", "event": event}
+    return None
 
 
 def _runtime_log_text(facts):
@@ -107,10 +120,23 @@ def classify_session(facts):
             decision = ("EXTERNAL_SIGNAL", "supervisor_signal", {"source": "supervisor", "signal": facts["external_signal"]})
         else:
             terminal = _qmp_terminal(facts)
-            if terminal == "SHUTDOWN":
-                decision = ("GUEST_SHUTDOWN", "qmp_shutdown", {"source": "qmp", "event": "SHUTDOWN"})
-            elif terminal == "RESET" and facts.get("appliance_state") == "installed":
-                decision = ("GUEST_REBOOT", "qmp_reset", {"source": "qmp", "event": "RESET"})
+            event = terminal.get("event") if terminal else None
+            reason = terminal.get("reason") if terminal else None
+            guest = terminal.get("guest") if terminal else None
+            if event == "SHUTDOWN" and reason == "guest-shutdown" and guest is True:
+                decision = ("GUEST_SHUTDOWN", "qmp_guest_shutdown", terminal)
+            elif event == "SHUTDOWN" and reason == "guest-reset" and guest is True and facts.get("appliance_state") == "installed":
+                decision = ("GUEST_REBOOT", "qmp_guest_reset_shutdown", terminal)
+            elif event == "RESET" and reason == "guest-reset" and guest is True and facts.get("appliance_state") == "installed":
+                decision = ("GUEST_REBOOT", "qmp_reset", terminal)
+            elif event == "SHUTDOWN" and reason == "guest-panic" and guest is True:
+                decision = ("GUEST_KERNEL_PANIC", "qmp_guest_panic", terminal)
+            elif event == "SHUTDOWN" and reason == "host-error":
+                decision = ("QEMU_FATAL", "qmp_host_error", terminal)
+            elif event == "SHUTDOWN" and reason == "host-signal":
+                decision = ("EXTERNAL_SIGNAL", "qmp_host_signal", terminal)
+            elif event in ("SHUTDOWN", "RESET"):
+                decision = ("UNKNOWN_EXIT", "qmp_terminal_ambiguous", terminal)
             elif facts.get("qemu_identified") and facts.get("qemu_exit") not in (None, 0):
                 decision = ("QEMU_FATAL", "qemu_exit_nonzero", {"source": "process", "exit_code": facts["qemu_exit"]})
             elif facts.get("launcher_exit") not in (None, 0) and not facts.get("qemu_identified"):

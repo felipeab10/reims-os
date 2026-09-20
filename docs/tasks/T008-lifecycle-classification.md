@@ -1,6 +1,6 @@
 # T008 — Diferenciar shutdown/reboot normal de crash/kernel panic
 
-Status: `[x]` concluída e validada
+Status: `[-]` corrective validation
 
 Dependências: **T005** implementada; complementa **T006** e **T007**.
 
@@ -134,6 +134,10 @@ Cada resultado mantém schema 1 e acrescenta `classification_reason`, `primary_e
 A fonte de log de kernel do host para NVIDIA Xid/NVRM e OOM killer não está disponível no desenho atual sem sudo: `HOST_KERNEL_LOG_SOURCE=UNAVAILABLE`. Não há coletor privilegiado nem inferência desses eventos sem evidência. A mensagem `fatal: No names found, cannot describe anything.` é explicitamente ignorada como ruído benigno de `git describe ... || :` quando isolada.
 
 A matriz controlada está em `tests/t008-lifecycle-classification.py`: 19 testes com `T008_CONTROLLED_TEST_PASS`, cobrindo shutdown, reboot, panic/RESET/SHUTDOWN, fatal precedence, sinais, terminal QMP + exit não-zero, rc=0 conservador, texto fatal benigno, QMP error não fatal, evidência primária, fontes consultadas, boundary em bytes, recovery normal, mismatch, falha preservando result.json e isolamento de state. T005 permanece em regressão com 16 testes; T002/T003/T004 e dependency check também passaram. T006 e T007 continuam não implementadas; nenhuma ação de host foi executada.
+
+## Follow-up corrective: QMP ShutdownCause
+
+O runtime real da T007 revelou que Apple menu → Restart, com `-action reboot=shutdown`, pode produzir `QMP SHUTDOWN` com `data.guest=true` e `data.reason=guest-reset`. O comportamento anterior descartava `data.reason` e classificava qualquer `SHUTDOWN` como `GUEST_SHUTDOWN`, levando incorretamente a `WOULD_POWEROFF`. A correção preserva a mensagem QMP estruturada e classifica `SHUTDOWN reason=guest-reset` como `GUEST_REBOOT` quando `appliance_state=installed`, mantendo `SHUTDOWN reason=guest-shutdown` como `GUEST_SHUTDOWN`. Causas `guest-panic`, `host-error`, `host-signal`, causas host-side ambíguas e reason ausente/desconhecido são conservadoras e não elegíveis a host action. Em `installing`, `guest-reset` não é reboot normal do host.
 
 ## Evidência final de runtime
 
