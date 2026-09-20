@@ -1,6 +1,6 @@
 # T005 — Criar supervisor QMP/serial/QEMU
 
-Status: `[-]` em implementação/validação
+Status: `[x]` concluída e validada
 
 Dependências: **T001–T004**.
 
@@ -116,12 +116,28 @@ Registrar nesta task:
 
 ## Histórico
 
-Nenhuma implementação validada ainda.
+- Implementação e validação concluídas no PR #3, branch `feat/t005-supervisor`.
+- Commits de correção relevantes: `d2f537e699a6e059854fbf10a92012274415e705` (framing QMP) e `0726d464bbce969f2e38c4a439fa0f2d8e3401d7` (delimitadores de evidência).
+- A primeira execução real revelou `JSON parse error, stray '\\'`; a causa foi o delimitador incorreto de `qmp_capabilities`. A mensagem passou de `sock.sendall(b'{"execute":"qmp_capabilities"}\\n')` para `sock.sendall(b'{"execute":"qmp_capabilities"}\n')`.
+- A revisão final corrigiu também o JSONL físico de `lifecycle.log` (`"\\n"` para `"\n"`) e a tokenização de `/proc/<pid>/cmdline` (`b"\\0"` para `b"\0"`).
 
-## Implementação em validação
+## Implementação validada
 
-Implementado em scripts/reims-supervisor.py, usando Python stdlib. A cadeia é reims-launch/VM manager -> supervisor -> boot-x86 -> QEMU. Cada execução cria boot-YYYYMMDD-HHMMSS-UUID sob REIMS_LOG_ROOT, com lifecycle.log JSONL, result.json, qemu.log e serial.log; latest aponta para a sessão mais recente.
+Implementado em `scripts/reims-supervisor.py`, usando Python stdlib. A cadeia é reims-launch/VM manager -> supervisor -> boot-x86 -> QEMU. Cada execução cria `boot-YYYYMMDD-HHMMSS-UUID` sob `REIMS_LOG_ROOT`, com `lifecycle.log` JSONL, `result.json`, `qemu.log` e `serial.log`; `latest` aponta para a sessão mais recente.
 
-O result.json usa schema 1. A precedência é panic serial -> sinal externo -> fatal pré-QEMU -> QEMU não-zero -> RESET em installed -> SHUTDOWN -> UNKNOWN_EXIT. QMP indisponível é conservador e nunca implica shutdown/reboot. RESET em installing registra INSTALLER_RESET e não encerra supervisão. O PID QEMU só é aceito como filho direto do launcher em /proc/<launcher>/task/<launcher>/children após caminho QMP novo, greeting QMP válido e resposta bem-sucedida a qmp_capabilities; a simples observação de um filho não o identifica como QEMU. O leitor QMP usa socket não bloqueante com selectors/recv, tolera períodos idle e continua procurando descoberta atrasada enquanto o launcher vive, além de drenar eventos terminais após a saída. Antes da classificação, o serial é redescoberto e relido integralmente; ambiguidades de PID/serial e falhas de handshake ficam registradas como limitações. started_at é capturado antes do lançamento e result.json é atualizado atomicamente.
+O supervisor observa launcher, PID QEMU, QMP, serial, exit codes e o estado do appliance. O `result.json` usa schema 1 e inclui `schema`, `session_id`, `vm_id`, `appliance_state`, `classification`, timestamps, PIDs/exit codes, `external_signal`, `qmp`, `serial`, `process`, `evidence` e `limitations`. O root de produção é `/var/log/reims/`, com pointer `/var/log/reims/latest`.
 
-A matriz está em tests/t005-supervisor.py. Nenhuma execução macOS real foi realizada; T005 permanece em implementação/validação.
+Classificações estáveis: `GUEST_SHUTDOWN`, `GUEST_REBOOT`, `GUEST_KERNEL_PANIC`, `QEMU_FATAL`, `REIMS_FATAL`, `EXTERNAL_SIGNAL` e `UNKNOWN_EXIT`. A precedência é: (1) guest kernel panic; (2) sinal externo; (3) fatal pré-QEMU Reims/launcher; (4) QEMU identificado com exit code não-zero; (5) `RESET` em `installed`; (6) `SHUTDOWN`; (7) `UNKNOWN_EXIT`. Em `installing`, `RESET` registra `INSTALLER_RESET`, mantém a supervisão e não executa ação de host. Erros QMP pós-handshake geram `QMP_ERROR` e a limitação `qmp_protocol_error`, sem inferir `QEMU_FATAL`.
+
+QEMU só é identificado após qmp.path novo, greeting válido, `qmp_capabilities` válido e child direto inequívoco do launcher. Não há `pgrep qemu`, `pkill` ou `killall`; sinais usam somente o process group exato iniciado pelo supervisor.
+
+## Evidência final de validação
+
+- Runtime real: `/tmp/reims-t005-real-v2-7I2VmJ/logs/boot-20260919-234943-12105b19`, macOS Sequoia 15.8, VM `reims-57f0fd6b61a74542`, fixture source preservada.
+- QEMU real identificado em `components/reims-vgpu/vendor/qemu/build/qemu-system-x86_64`; QMP `available=true`.
+- Eventos: `RTC_CHANGE`, `NIC_RX_FILTER_CHANGED`, `RTC_CHANGE`, `SHUTDOWN`; evento terminal `SHUTDOWN` com `guest=true` e `reason=guest-shutdown`.
+- Resultado real: `classification=GUEST_SHUTDOWN`, serial preservado, panic=false, `limitations=[]`, launcher exit code 0, QEMU exit code 0, nenhuma ação de energia no host.
+- Testes: `T005_CONTROLLED_TEST_PASS`, T002, T003 e T004 PASS; dependency check PASS; pins preservados.
+- A matriz controlou shutdown, reboot, panic/reset, QEMU fatal, fatal pré-QEMU, QMP indisponível/handshake inválido/erro de protocolo, sinal externo, installer RESET, descoberta atrasada, idle/terminal QMP, late panic, identidade/ambiguidade de PID, ambiguidade serial, resultado atômico/latest pointer, JSONL real, cmdline tokenizado e ausência de broad process control.
+- A mensagem `fatal: No names found, cannot describe anything.` é ruído benigno de `scripts/qemu-version.sh` (`git describe ... || :`), não falha QEMU; futuras classificações devem usar evidência contextual, não uma regra genérica por texto.
+- Não foi necessário repetir o runtime macOS para as correções de evidência, pois não alteraram classificação, QMP, seleção de PID, serial ou política de lifecycle.
