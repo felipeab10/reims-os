@@ -1,6 +1,6 @@
 # T008 — Diferenciar shutdown/reboot normal de crash/kernel panic
 
-Status: `[-]` corrective validation
+Status: `[x]` concluída e validada
 
 Dependências: **T005** implementada; complementa **T006** e **T007**.
 
@@ -123,11 +123,13 @@ Registrar nesta task:
 - exemplo de resultado estruturado para shutdown, reboot e panic;
 - confirmação de integração segura com T006/T007.
 
-## Implementação e validação final
+## Implementação e validação original (histórico)
+
+O texto abaixo descreve a validação original da T008, antes da descoberta do bug de ShutdownCause. Números e `classification_reason` citados aqui são históricos; o estado atual está em **Corrective validation final**.
 
 Status desta rodada: o supervisor mantém uma única fonte de decisão em `classify_session(facts)`, preservando `classify(facts)` como compatibilidade da T005. A decisão somente ocorre após o término do launcher/QEMU, drenagem do QMP e releitura integral do serial; o `qemu.log` final é analisado com offset registrado na identificação do QEMU.
 
-A precedência final validada é: (1) kernel panic comprovado no serial; (2) fatal explícito contextual Reims/Vulkan/QEMU; (3) external signal conhecido; (4) último evento terminal guest QMP; (5) QEMU identificado com exit code não-zero; (6) launcher pré-QEMU com exit code não-zero; (7) `UNKNOWN_EXIT`. Em forma resumida: `PANIC > EXPLICIT_FATAL > EXTERNAL_SIGNAL > GUEST_TERMINAL > PROCESS_NONZERO > UNKNOWN`. Panic nunca vira reboot por RESET posterior; fatal explícito vence shutdown/reset/signal; sinal externo vence exit code não-zero; terminal QMP comprovado vence exit code não-zero; e `rc=0` isoladamente nunca prova shutdown. O último terminal é usado: RESET → SHUTDOWN resulta em `GUEST_SHUTDOWN`; SHUTDOWN → RESET em `installed` resulta em `GUEST_REBOOT`; RESET em `installing` não representa reboot normal do host. O offset do `qemu.log` é capturado uma única vez no primeiro `qmp.path` fresco, em bytes, e a análise faz slice em bytes antes do decode.
+A precedência final validada é: (1) kernel panic comprovado no serial; (2) fatal explícito contextual Reims/Vulkan/QEMU; (3) external signal conhecido; (4) último evento terminal guest QMP; (5) QEMU identificado com exit code não-zero; (6) launcher pré-QEMU com exit code não-zero; (7) `UNKNOWN_EXIT`. Em forma resumida: `PANIC > EXPLICIT_FATAL > EXTERNAL_SIGNAL > GUEST_TERMINAL > PROCESS_NONZERO > UNKNOWN`. Panic nunca vira reboot por RESET posterior; fatal explícito vence shutdown/reset/signal; sinal externo vence exit code não-zero; terminal QMP comprovado vence exit code não-zero; e `rc=0` isoladamente nunca prova shutdown. O último terminal é usado, e desde a correção do ShutdownCause ele é interpretado com `guest`/`reason` (ver **Corrective validation final**): `SHUTDOWN reason=guest-shutdown` resulta em `GUEST_SHUTDOWN`; `SHUTDOWN reason=guest-reset` ou `RESET reason=guest-reset` em `installed` resultam em `GUEST_REBOOT`; terminais ambíguos/desconhecidos resultam em `UNKNOWN_EXIT`; `installing` não representa reboot normal do host. O offset do `qemu.log` é capturado uma única vez no primeiro `qmp.path` fresco, em bytes, e a análise faz slice em bytes antes do decode.
 
 Cada resultado mantém schema 1 e acrescenta `classification_reason`, `primary_evidence`, `sources_consulted`, `recovery_required`, `recovery` e diagnósticos curtos de panic. A recuperação é tentada somente após a classificação final, via `scripts/reims-state.py transition recovery` e `REIMS_STATE_ROOT`; falha de transição preserva o resultado e adiciona `recovery_transition_failed`. Panic, QEMU fatal, Reims/Vulkan fatal e UNKNOWN exigem recovery; shutdown, reboot e sinal externo não exigem.
 
@@ -139,7 +141,7 @@ A matriz controlada está em `tests/t008-lifecycle-classification.py`: 19 testes
 
 O runtime real da T007 revelou que Apple menu → Restart, com `-action reboot=shutdown`, pode produzir `QMP SHUTDOWN` com `data.guest=true` e `data.reason=guest-reset`. O comportamento anterior descartava `data.reason` e classificava qualquer `SHUTDOWN` como `GUEST_SHUTDOWN`, levando incorretamente a `WOULD_POWEROFF`. A correção preserva a mensagem QMP estruturada e classifica `SHUTDOWN reason=guest-reset` como `GUEST_REBOOT` quando `appliance_state=installed`, mantendo `SHUTDOWN reason=guest-shutdown` como `GUEST_SHUTDOWN`. Causas `guest-panic`, `host-error`, `host-signal`, causas host-side ambíguas e reason ausente/desconhecido são conservadoras e não elegíveis a host action. Em `installing`, `guest-reset` não é reboot normal do host.
 
-## Evidência final de runtime
+## Evidência original de runtime (histórica)
 
 A validação real foi executada em macOS Sequoia 15.8 com a VM reims-57f0fd6b61a74542. Artefatos preservados: runtime root /tmp/reims-t008-real-nRxmee; session /tmp/reims-t008-real-nRxmee/logs/boot-20260920-061036-4a0fb31c; source fixture /home/felipeab10/Documentos/reims-t002-fixtures/runtime-sequoia-retry-2/vms/reims-57f0fd6b61a74542. A fixture original foi usada somente como backing source e permaneceu inalterada.
 
@@ -151,8 +153,98 @@ QEMU: PID 68828; executable /home/felipeab10/Documentos/reims-os/components/reim
 
 O runtime real registrou fatal: No names found, cannot describe anything. no qemu.log. Mesmo assim classification=GUEST_SHUTDOWN e classification_reason=qmp_shutdown, comprovando que o ruído pré-runtime não gera falso QEMU_FATAL. serial.log não vazio; panic_detected=false; Debugger called: <panic> ausente. Before/after stat comparison teve zero differences para macos.qcow2, OpenCore.qcow2, OVMF_CODE.fd e OVMF_VARS.fd.
 
-### Markers finais e regressões
+### Markers da validação original (histórico)
 
-Matriz final: 19 tests, OK, T008_CONTROLLED_TEST_PASS. Markers críticos: T008_PANIC_PRECEDENCE=PASS; T008_EXPLICIT_FATAL_PRECEDENCE=PASS; T008_EXTERNAL_SIGNAL_QEMU_NONZERO=PASS; T008_EXTERNAL_SIGNAL_PRE_QEMU=PASS; T008_SHUTDOWN_BEATS_EXIT_NONZERO=PASS; T008_REBOOT_BEATS_EXIT_NONZERO=PASS; T008_RUNTIME_LOG_BYTE_OFFSET=PASS; T008_RUNTIME_LOG_BOUNDARY=PASS; T008_RUN_UNKNOWN_TO_RECOVERY=PASS; T008_RUN_NORMAL_NO_RECOVERY=PASS; T008_RECOVERY_VM_ID_GUARD=PASS; T008_RECOVERY_FAILURE_PRESERVES_RESULT=PASS; T008_RECOVERY_VM_MISMATCH_NO_MUTATION=PASS; T008_TEST_STATE_ISOLATION=PASS.
+Matriz da validação original: 19 tests, OK, T008_CONTROLLED_TEST_PASS. Markers críticos: T008_PANIC_PRECEDENCE=PASS; T008_EXPLICIT_FATAL_PRECEDENCE=PASS; T008_EXTERNAL_SIGNAL_QEMU_NONZERO=PASS; T008_EXTERNAL_SIGNAL_PRE_QEMU=PASS; T008_SHUTDOWN_BEATS_EXIT_NONZERO=PASS; T008_REBOOT_BEATS_EXIT_NONZERO=PASS; T008_RUNTIME_LOG_BYTE_OFFSET=PASS; T008_RUNTIME_LOG_BOUNDARY=PASS; T008_RUN_UNKNOWN_TO_RECOVERY=PASS; T008_RUN_NORMAL_NO_RECOVERY=PASS; T008_RECOVERY_VM_ID_GUARD=PASS; T008_RECOVERY_FAILURE_PRESERVES_RESULT=PASS; T008_RECOVERY_VM_MISMATCH_NO_MUTATION=PASS; T008_TEST_STATE_ISOLATION=PASS.
 
 T005: 16 tests PASS, T005_CONTROLLED_TEST_PASS. T002, T003, T004 e dependency check: PASS. Pins unchanged. No systemctl poweroff/reboot was executed. T006/T007 remain unimplemented.
+
+## Corrective validation final
+
+Esta é a validação final da T008, após a correção do ShutdownCause. Substitui os números e o `classification_reason` da validação original acima.
+
+### Bug descoberto
+
+O runtime real da T007 (`Apple menu → Restart` com `-action reboot=shutdown`) produziu:
+
+```json
+{"event": "SHUTDOWN", "data": {"guest": true, "reason": "guest-reset"}}
+```
+
+A implementação antiga descartava `data.reason` e classificava qualquer `SHUTDOWN` como `GUEST_SHUTDOWN`, o que levava a `WOULD_POWEROFF` para um Restart legítimo. Não era bug do host-action nem da política T007; era classificação T008.
+
+### Correção
+
+`_qmp_terminal(facts)` passou a preservar a mensagem QMP terminal estruturada (`guest`, `reason`) e `classify_session` passou a ser reason-aware:
+
+```text
+SHUTDOWN guest=true reason=guest-shutdown              → GUEST_SHUTDOWN / qmp_guest_shutdown / recovery=false
+SHUTDOWN guest=true reason=guest-reset + installed    → GUEST_REBOOT   / qmp_guest_reset_shutdown / recovery=false
+RESET    guest=true reason=guest-reset + installed    → GUEST_REBOOT   / qmp_reset
+SHUTDOWN guest=true reason=guest-panic                → GUEST_KERNEL_PANIC / qmp_guest_panic / recovery=true
+SHUTDOWN reason=host-error                            → QEMU_FATAL     / qmp_host_error / recovery=true
+SHUTDOWN reason=host-signal                           → EXTERNAL_SIGNAL / qmp_host_signal
+SHUTDOWN reason=host-* (host-ui/qmp-quit/...)         → UNKNOWN_EXIT   / qmp_terminal_ambiguous (nunca ação de host)
+SHUTDOWN sem reason / reason desconhecido             → UNKNOWN_EXIT   / qmp_terminal_ambiguous (nunca GUEST_SHUTDOWN)
+installing + guest-reset                              → UNKNOWN_EXIT   / qmp_terminal_ambiguous (nunca reboot normal)
+```
+
+A precedência permanece: serial panic > explicit fatal > external signal > terminal QMP > exit codes > unknown.
+
+Primary evidence real persistida:
+
+```json
+{"source": "qmp", "event": "SHUTDOWN", "guest": true, "reason": "guest-reset"}
+```
+
+### Runtime real corretivo
+
+macOS Sequoia 15.8, VM `reims-57f0fd6b61a74542`, launcher real, `installed`, `dry-run`, `-action reboot=shutdown`.
+
+```text
+RUNTIME_ROOT=/tmp/reims-t007-corrective-8wpVYZ
+SESSION_DIR=/tmp/reims-t007-corrective-8wpVYZ/logs/boot-20260920-131948-38838820
+classification=GUEST_REBOOT
+classification_reason=qmp_guest_reset_shutdown
+recovery_required=false
+serial.panic_detected=false
+limitations=[]
+STATE_BEFORE=installed
+STATE_AFTER=installed
+host_action.action=reboot
+host_action.status=WOULD_REBOOT
+WOULD_REBOOT_COUNT=1
+WOULD_POWEROFF_COUNT=0
+SYSTEMCTL_GUARD_CALLED=no
+SECOND_CONSUMER_STATUS=ALREADY_CLAIMED
+SOURCE_FIXTURE_CHANGED=no
+```
+
+### Matriz atual
+
+```text
+T008=20 tests PASS (T008_CONTROLLED_TEST_PASS)
+T005=16 tests PASS
+T006=13 tests PASS
+T007=9 tests PASS
+T002=PASS
+T003=PASS
+T004=PASS
+dependency check=PASS
+pins unchanged
+```
+
+### Markers do corrective
+
+```text
+T008_GUEST_SHUTDOWN_CAUSE=PASS
+T008_GUEST_RESET_AS_SHUTDOWN=PASS
+T008_RESET_EVENT_REBOOT=PASS
+T008_GUEST_PANIC_CAUSE=PASS
+T008_HOST_ERROR_CAUSE=PASS
+T008_AMBIGUOUS_SHUTDOWN_SAFE=PASS
+T008_REAL_GUEST_RESET_SHUTDOWN_CAUSE=PASS
+T008_REAL_REBOOT_CLASSIFICATION=PASS
+T008_REAL_PRIMARY_EVIDENCE_CAUSE=PASS
+T008_REAL_REBOOT_NO_RECOVERY=PASS
+```
