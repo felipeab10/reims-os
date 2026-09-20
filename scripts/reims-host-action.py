@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Consume a persisted T008 result and optionally request host poweroff."""
+"""Consume a persisted T008 result and optionally request a host lifecycle action."""
 import argparse
 import datetime as dt
 import json

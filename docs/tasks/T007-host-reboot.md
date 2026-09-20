@@ -84,7 +84,7 @@ Registrar nesta task:
 
 T007 consome exclusivamente o result.json final persistido pelo supervisor/T008. A elegibilidade é classification=GUEST_REBOOT, appliance_state=installed e recovery_required=false; installing permanece sem host reboot. O consumidor compartilhado com T006 diferencia poweroff/reboot, grava WOULD_REBOOT em dry-run, usa host-action.claim com O_CREAT|O_EXCL, persiste audit antes de sync e só então chama systemctl reboot em systemd. Falhas conservadoras, idempotência e integração do supervisor são cobertas por tests/t007-host-reboot.py.
 
-A análise de scripts/reims-launch.sh confirma QEMU_REBOOT_ACTION=reset durante installing e QEMU_REBOOT_ACTION=exit quando installed; o reset interno do instalador não deve virar reboot do host. Nenhum reboot físico foi executado.
+A análise de scripts/reims-launch.sh confirma QEMU_REBOOT_ACTION=reset durante installing e QEMU_REBOOT_ACTION=exit quando installed; o reset interno do instalador não deve virar reboot do host. O teste controlado usa o fake T005, que encerra após RESET e portanto prova somente o guard supervisor/host-action, não a continuidade do QEMU real. A continuidade real do instalador permanece derivada da configuração QEMU_REBOOT_ACTION=reset e não foi executada nesta rodada. Nenhum reboot físico foi executado.
 
 ## Histórico
 

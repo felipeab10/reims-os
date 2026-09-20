@@ -98,10 +98,12 @@ class T006HostPoweroffTests(unittest.TestCase):
             result = action.consume(self.result_path, mode="dry-run")
             expected = "WOULD_REBOOT" if classification == "GUEST_REBOOT" and state == "installed" else "NO_ACTION"
             self.assertEqual(result["status"], expected)
-            if classification == "GUEST_REBOOT":
+            if classification == "GUEST_REBOOT" and state == "installed":
                 self.assertEqual(result["action"], "reboot")
                 self.assertFalse(self.calls)
+                self.assertFalse((self.session / "host-action.claim").exists())
             else:
+                self.assertEqual(result["action"], "none")
                 self.assertFalse((self.session / "host-action.claim").exists())
             print(marker + "=PASS")
 
