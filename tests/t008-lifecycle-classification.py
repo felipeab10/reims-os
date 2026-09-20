@@ -178,7 +178,8 @@ class T008ClassificationTests(unittest.TestCase):
     def run_session(self, root, vm_id, mode, appliance_state="installed", rc=0, state_vm_id=None, capture_state_before=False):
         tmp = Path(root); run = tmp / "run"; logs = tmp / "logs"; run.mkdir(); logs.mkdir()
         fake = tmp / "fake.py"; boot = tmp / "boot.py"; fake.write_text(FAKE); fake.chmod(0o755); boot.write_text(BOOT); boot.chmod(0o755)
-        env = os.environ.copy(); env["REIMS_STATE_ROOT"] = str(tmp / "state")
+        env = os.environ.copy(); env["REIMS_STATE_ROOT"] = str(tmp / "state"); env["REIMS_HOST_ACTION_MODE"] = "disabled"
+        if env["REIMS_HOST_ACTION_MODE"] != "disabled": raise AssertionError("unsafe host action test environment")
         state = ROOT / "scripts" / "reims-state.py"
         configured_vm_id = state_vm_id or vm_id
         subprocess.run([sys.executable, str(state), "configure", "--vm-id", configured_vm_id, "--macos", "sequoia", "--cpu", "4", "--ram-gb", "8", "--disk-gb", "80"], env=env, check=True, capture_output=True)

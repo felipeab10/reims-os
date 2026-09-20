@@ -53,6 +53,12 @@ def _audit(session, result, mode, status, error=None):
     atomic_json(session / "host-action.json", value)
     return value
 
+def _existing_audit(session):
+    try:
+        return json.loads((session / "host-action.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
 def _claim(session):
     claim = session / "host-action.claim"
     try:
@@ -98,19 +104,31 @@ def consume(result_path, mode=None, executor=None, sync_fn=None):
         audit = _audit(session, result, mode, "NO_ACTION", "not_eligible")
         append_event(lifecycle, "HOST_ACTION_NO_ACTION", reason="not_eligible")
         return audit
-    if not _claim(session):
-        return _audit(session, result, mode, "ALREADY_CLAIMED")
     if mode == "disabled":
         audit = _audit(session, result, mode, "HOST_ACTION_DISABLED")
         append_event(lifecycle, "HOST_ACTION_DISABLED")
         return audit
+    if not _claim(session):
+        existing = _existing_audit(session)
+        append_event(lifecycle, "HOST_ACTION_ALREADY_CLAIMED")
+        if existing is not None:
+            response = dict(existing)
+            response["status"] = "ALREADY_CLAIMED"
+            return response
+        return {"status": "ALREADY_CLAIMED"}
     if mode == "dry-run":
         audit = _audit(session, result, mode, "WOULD_POWEROFF")
         append_event(lifecycle, "WOULD_POWEROFF")
         return audit
     audit = _audit(session, result, mode, "HOST_POWEROFF_REQUESTED")
     append_event(lifecycle, "HOST_POWEROFF_REQUESTED")
-    (sync_fn or os.sync)()
+    try:
+        (sync_fn or os.sync)()
+    except Exception as exc:
+        error = "sync_failed: " + str(exc)
+        audit = _audit(session, result, mode, "HOST_POWEROFF_FAILED", error)
+        append_event(lifecycle, "HOST_POWEROFF_FAILED", error=error)
+        return audit
     try:
         (executor or subprocess.run)(["systemctl", "poweroff"], check=True)
     except Exception as exc:

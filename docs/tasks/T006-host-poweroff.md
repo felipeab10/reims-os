@@ -86,7 +86,9 @@ T006 consome exclusivamente o result.json final persistido pelo supervisor/T008;
 
 REIMS_HOST_ACTION_MODE possui os modos disabled (default seguro), dry-run e systemd. O consumidor gera host-action.json atomicamente, registra eventos no lifecycle.log, usa claim atômico por sessão para idempotência e executa sync antes de qualquer chamada systemctl poweroff. O caminho systemd não usa sudo/su/pkexec e foi validado somente com executor mockado; nenhum poweroff real foi executado. Modo desconhecido falha conservadoramente. Reboot pertence à T007 e não é implementado aqui.
 
-A matriz controlada cobre shutdown elegível, classificações não elegíveis, estado installing, rc=0, recovery guard, resultado inválido, final-result-only, auditoria, dry-run/systemd e idempotência. T006 permanece em implementação/validação até revisão da PR.
+O supervisor chama o consumidor somente depois de persistir atomicamente result.json e atualizar latest, sempre usando o result_path exato da sessão. Falha do consumidor é registrada como HOST_ACTION_CONSUMER_FAILED, não altera a classificação e preserva o retorno original do launcher/QEMU. disabled registra HOST_ACTION_DISABLED sem criar claim; chamadas duplicadas preservam o host-action.json original. Falhas de sync ou systemctl geram HOST_POWEROFF_FAILED, não chamam poweroff em caso de sync falho e mantêm o claim para impedir retry automático.
+
+A matriz controlada cobre shutdown elegível, classificações não elegíveis, estado installing, rc=0, recovery guard, resultado inválido, final-result-only, integração real do supervisor em dry-run, auditoria, dry-run/systemd, idempotência e falhas conservadoras. T006 permanece em implementação/validação até revisão da PR.
 
 ## Histórico
 

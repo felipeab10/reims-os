@@ -437,6 +437,15 @@ def run(args):
     except FileNotFoundError: pass
     temp_latest.symlink_to(session.name)
     os.replace(temp_latest, latest)
+    host_action = Path(__file__).with_name("reims-host-action.py")
+    try:
+        consumer = subprocess.run([sys.executable, str(host_action), str(result_path)],
+                                  cwd=Path(__file__).parent.parent, check=False)
+        if consumer.returncode != 0:
+            log_event(lifecycle, "host_action", "HOST_ACTION_CONSUMER_FAILED",
+                      return_code=consumer.returncode)
+    except OSError as exc:
+        log_event(lifecycle, "host_action", "HOST_ACTION_CONSUMER_FAILED", error=str(exc))
     return 128 + (-facts["launcher_exit"]) if facts["launcher_exit"] < 0 else facts["launcher_exit"]
 
 def main():

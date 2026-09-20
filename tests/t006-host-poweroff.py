@@ -2,12 +2,18 @@
 import importlib.util
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MODULE_PATH = ROOT / "scripts" / "reims-host-action.py"
+T005_PATH = ROOT / "tests" / "t005-supervisor.py"
+spec5 = importlib.util.spec_from_file_location("t005_fixture", T005_PATH)
+t005_fixture = importlib.util.module_from_spec(spec5)
+spec5.loader.exec_module(t005_fixture)
 spec = importlib.util.spec_from_file_location("reims_host_action", MODULE_PATH)
 action = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(action)
@@ -119,6 +125,63 @@ class T006HostPoweroffTests(unittest.TestCase):
         self.assertEqual(len(self.calls), 1)
         print("T006_FINAL_RESULT_ONLY=PASS")
         print("T006_RESULT_BEFORE_ACTION=PASS")
+
+    def test_audit_preservation_and_disabled_claim(self):
+        self.write_result()
+        first = action.consume(self.result_path, mode="dry-run")
+        original = json.loads((self.session / "host-action.json").read_text())
+        second = action.consume(self.result_path, mode="dry-run")
+        self.assertEqual(second["status"], "ALREADY_CLAIMED")
+        self.assertEqual(json.loads((self.session / "host-action.json").read_text()), original)
+        print("T006_IDEMPOTENT_AUDIT_PRESERVED=PASS")
+        self.session.joinpath("host-action.claim").unlink()
+        self.write_result()
+        disabled = action.consume(self.result_path, mode="disabled")
+        self.assertEqual(disabled["status"], "HOST_ACTION_DISABLED")
+        self.assertFalse((self.session / "host-action.claim").exists())
+        dry = action.consume(self.result_path, mode="dry-run")
+        self.assertEqual(dry["status"], "WOULD_POWEROFF")
+        print("T006_DISABLED_NO_CLAIM=PASS")
+
+    def test_systemd_and_sync_failures_preserve_audit(self):
+        self.write_result()
+        failed = action.consume(self.result_path, mode="systemd", executor=lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("systemctl denied")), sync_fn=lambda: None)
+        self.assertEqual(failed["status"], "HOST_POWEROFF_FAILED")
+        original = json.loads((self.session / "host-action.json").read_text())
+        again = action.consume(self.result_path, mode="systemd", executor=self.fake_executor)
+        self.assertEqual(again["status"], "ALREADY_CLAIMED")
+        self.assertEqual(json.loads((self.session / "host-action.json").read_text()), original)
+        print("T006_SYSTEMD_FAILURE_AUDIT=PASS")
+        print("T006_FAILED_AUDIT_PRESERVED=PASS")
+        self.session.joinpath("host-action.claim").unlink()
+        self.write_result()
+        sync_failed = action.consume(self.result_path, mode="systemd", executor=self.fake_executor, sync_fn=lambda: (_ for _ in ()).throw(RuntimeError("flush failed")))
+        self.assertEqual(sync_failed["status"], "HOST_POWEROFF_FAILED")
+        self.assertIn("sync_failed", sync_failed["error"])
+        self.assertFalse(self.calls)
+        print("T006_SYNC_FAILURE_NO_POWEROFF=PASS")
+
+    def test_supervisor_integration(self):
+        fake = self.session.parent / "fake.py"
+        fake.write_text(t005_fixture.FAKE)
+        fake.chmod(0o755)
+        boot = self.session.parent / "boot.py"; boot.write_text(t005_fixture.BOOT); boot.chmod(0o755)
+        run = self.session.parent / "run"; logs = self.session.parent / "logs"; run.mkdir(); logs.mkdir()
+        env = os.environ.copy(); env["REIMS_STATE_ROOT"] = str(self.session.parent / "state"); env["REIMS_HOST_ACTION_MODE"] = "dry-run"
+        state = ROOT / "scripts" / "reims-state.py"
+        subprocess.run([sys.executable, str(state), "configure", "--vm-id", "reims-0123456789abcdef", "--macos", "sequoia", "--cpu", "4", "--ram-gb", "8", "--disk-gb", "80"], env=env, check=True, capture_output=True)
+        subprocess.run([sys.executable, str(state), "transition", "installed"], env=env, check=True, capture_output=True)
+        proc = subprocess.run([sys.executable, str(ROOT / "scripts/reims-supervisor.py"), "run", "--vm-id", "reims-0123456789abcdef", "--appliance-state", "installed", "--run-dir", str(run), "--log-root", str(logs), "--", str(boot), str(fake), str(run), "shutdown", "0", "0.15", "0"], env=env, cwd=ROOT, capture_output=True, text=True)
+        session = next(logs.glob("*/result.json")).parent; result = json.loads((session / "result.json").read_text()); audit = json.loads((session / "host-action.json").read_text())
+        if result["classification"] != "GUEST_SHUTDOWN": raise AssertionError(json.dumps({"result": result, "stderr": proc.stderr, "stdout": proc.stdout}, indent=2)); self.assertEqual(audit["status"], "WOULD_POWEROFF")
+        events = [json.loads(line)["event"] for line in (session / "lifecycle.log").read_text().splitlines()]; self.assertLess(events.index("classification"), events.index("WOULD_POWEROFF"))
+        print("T006_SUPERVISOR_INTEGRATION=PASS"); print("T006_RESULT_BEFORE_ACTION=PASS"); print("T006_CLASSIFICATION_BEFORE_ACTION=PASS")
+
+    def test_supervisor_unknown_no_poweroff(self):
+        self.write_result(classification="UNKNOWN_EXIT", state="installed")
+        result = action.consume(self.result_path, mode="dry-run")
+        self.assertEqual(result["status"], "NO_ACTION")
+        print("T006_SUPERVISOR_UNKNOWN_NO_POWEROFF=PASS")
 
     def test_invalid_result_safe(self):
         self.result_path.write_text("not json")
