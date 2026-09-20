@@ -105,7 +105,7 @@ def run(args):
         "qemu_identified": False, "launcher_had_child": False,
         "qemu_pid": None, "qemu_proc": None, "serial_path": None,
         "serial_ambiguous": False, "qmp_available": False,
-        "qmp_handshake_failed": False, "qmp_socket": None,
+        "qmp_handshake_failed": False, "qmp_protocol_error": False, "qmp_socket": None,
         "qmp_events": [], "qmp_raw": [],
     }
     log_event(lifecycle, "supervisor", "session_start", session_id=session_id,
@@ -212,11 +212,15 @@ def run(args):
                         facts["qmp_handshake_failed"] = True
                         break
                     try:
-                        sock.sendall(b'{"execute":"qmp_capabilities"}\\n')
+                        sock.sendall(b'{"execute":"qmp_capabilities"}\n')
                     except OSError:
                         facts["qmp_handshake_failed"] = True
                         break
                     handshake = "capability_sent"
+                    continue
+                if isinstance(message, dict) and "error" in message:
+                    facts["qmp_protocol_error"] = True
+                    log_event(lifecycle, "qmp", "QMP_ERROR", raw=message)
                     continue
                 if handshake == "capability_sent":
                     if not isinstance(message, dict) or "return" not in message:
@@ -297,6 +301,7 @@ def run(args):
     limitations = []
     if not facts["qmp_available"]:
         limitations.append("qmp_handshake_failed" if facts["qmp_handshake_failed"] else "qmp_unavailable")
+    if facts["qmp_protocol_error"]: limitations.append("qmp_protocol_error")
     if facts["serial_ambiguous"]: limitations.append("serial_ambiguous")
     if not facts["serial_path"]: limitations.append("serial_missing")
     if not facts["qemu_identified"] and facts["launcher_had_child"] and facts["qmp_available"]:

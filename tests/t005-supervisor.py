@@ -17,8 +17,17 @@ try:
  c,_=srv.accept()
  if mode == 'invalid': c.sendall(b'{"bad":true}\n')
  else:
-  c.sendall(b'{"QMP":{"version":{},"capabilities":[]}}\n'); c.recv(4096); c.sendall(b'{"return":{}}\n'); time.sleep(delay)
-  if mode in ('shutdown','terminal','serial-ambiguous'): c.sendall(b'{"event":"SHUTDOWN"}\n')
+  c.sendall(b'{"QMP":{"version":{},"capabilities":[]}}\n')
+  request=b''
+  while bytes([10]) not in request:
+   chunk=c.recv(4096)
+   if not chunk: sys.exit(70)
+   request += chunk
+  expected=b'{"execute":"qmp_capabilities"}'+bytes([10])
+  if request != expected: sys.exit(71)
+  c.sendall(b'{"return":{}}\n'); time.sleep(delay)
+  if mode == 'protocol-error': c.sendall(b'{"error":{"class":"GenericError","desc":"simulated"}}\n')
+  elif mode in ('shutdown','terminal','serial-ambiguous'): c.sendall(b'{"event":"SHUTDOWN"}\n')
   elif mode in ('reset','late-panic','install-reset','ambiguity'): c.sendall(b'{"event":"RESET"}\n')
   if mode == 'late-panic': serial.write_text('boot\nDebugger called: <panic>\n')
   if mode == 'install-reset': (run/'reset-sent').write_text('yes'); time.sleep(0.9)
@@ -64,6 +73,14 @@ class SupervisorTests(unittest.TestCase):
         launcher=self.tmp/'pre-qemu.py'; write_exec(launcher, f"#!/usr/bin/env python3\nimport subprocess,sys,time\nrun=sys.argv[2]; import os; os.makedirs(run, exist_ok=True); time.sleep(.02); h=subprocess.Popen([sys.executable,'-c','import time; time.sleep(.1)']); open(run+'/build-helper.pid','w').write(str(h.pid)); h.wait(); time.sleep(.2); q=subprocess.Popen([sys.executable, {str(self.fake)!r}, run, 'shutdown', '0', '3.0', '0']); sys.exit(q.wait())\n")
         p=subprocess.Popen([sys.executable,str(SUP),'run','--vm-id','reims-x','--appliance-state','installed','--run-dir',str(self.run),'--log-root',str(self.logs),'--',str(launcher),str(self.fake),str(self.run),'shutdown','0','0.15','0'],cwd=ROOT)
         d,r=self.result_for(p); self.assertEqual(r['classification'],'GUEST_SHUTDOWN'); self.assertEqual(r['qemu_pid'],int((self.run/'fake-qemu.pid').read_text())); self.assertNotEqual(r['qemu_pid'],int((self.run/'build-helper.pid').read_text())); print('T005_PRE_QEMU_CHILD_NOT_MISIDENTIFIED=PASS')
+    def test_qmp_protocol_error(self):
+        _,r,d=self.launch(mode='protocol-error',hold=0.1)
+        self.assertTrue(r['qmp']['available']); self.assertIn('qmp_protocol_error',r['limitations'])
+        self.assertIn('QMP_ERROR',Path(d/'lifecycle.log').read_text()); print('T005_QMP_PROTOCOL_ERROR_SURFACED=PASS')
+    def test_qmp_wire_marker(self):
+        _,r,_=self.launch(); self.assertTrue(r['qmp']['available'])
+        self.assertNotIn({'error': {'class': 'GenericError', 'desc': 'simulated'}}, r['qmp']['raw_events'])
+        print('T005_QMP_CAPABILITIES_WIRE_FORMAT=PASS')
     def test_qmp_unavailable(self):
         no=self.tmp/'no-qmp.py'; write_exec(no, '#!/usr/bin/env python3\nimport os,sys\nrun=sys.argv[1]; os.makedirs(run,exist_ok=True); open(run+"/serial-"+str(os.getpid())+".log","w").write("clean")\n')
         _,r,_=self.launch(script=no,mode=''); self.assertEqual(r['classification'],'UNKNOWN_EXIT'); self.assertIn('qmp_unavailable',r['limitations']); print('T005_QMP_UNAVAILABLE_CONSERVATIVE=PASS')
