@@ -40,7 +40,7 @@ class SupervisorTests(unittest.TestCase):
  def test_pre_qemu(self):
   bad=self.tmp/'bad.sh'; bad.write_text('#!/usr/bin/env bash\nexit 9\n'); bad.chmod(0o755); p=subprocess.run([sys.executable,str(SUP),'run','--vm-id','reims-x','--appliance-state','installed','--run-dir',str(self.run),'--log-root',str(self.logs),'--',str(bad)],cwd=ROOT); d=next(x for x in self.logs.iterdir() if x.is_dir() and x.name != 'latest'); r=json.loads((d/'result.json').read_text()); self.assertEqual(r['classification'],'REIMS_FATAL'); self.assertIsNone(r['qemu_pid']); print('T005_REIMS_FATAL_PRE_QEMU=PASS')
  def test_qmp_unavailable(self):
-  _,r,_=self.launch(event='',qmp=False); print('DEBUG_QMP_UNAVAILABLE',r); self.assertEqual(r['classification'],'UNKNOWN_EXIT'); self.assertIn('qmp_unavailable',r['limitations']); print('T005_QMP_UNAVAILABLE_CONSERVATIVE=PASS')
+  _,r,_=self.launch(event='',qmp=False); self.assertEqual(r['classification'],'UNKNOWN_EXIT'); self.assertIn('qmp_unavailable',r['limitations']); print('T005_QMP_UNAVAILABLE_CONSERVATIVE=PASS')
  def test_install_reset(self):
   _,r,d=self.launch(state='installing',event='RESET',hold=.4); self.assertEqual(r['classification'],'UNKNOWN_EXIT'); self.assertIn('INSTALLER_RESET',(d/'lifecycle.log').read_text()); print('T005_INSTALLER_RESET_CONTINUES=PASS')
  def test_signal(self):
