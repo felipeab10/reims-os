@@ -38,7 +38,7 @@ Uma task só deve mudar para `[x]` após existir evidência de implementação e
 
 ### Inicialização automática
 
-- [ ] [T009 — Criar sessão gráfica dedicada single-app](T009-single-app-session.md) — Xorg mínimo + Reims fullscreen; sem GNOME/KDE/XFCE, Openbox, painel ou desktop tradicional
+- [-] [T009 — Criar sessão gráfica dedicada single-app](T009-single-app-session.md) — sessão Xorg single-app e contrato X11 implementados; validação em runtime real pendente
 - [ ] T010 — Criar serviços systemd do appliance
 - [ ] [T011 — Implementar first-boot automático e Reims Setup](T011-firstboot-setup.md)
 - [ ] [T012 — Tornar o Linux invisível no fluxo normal](T012-hide-linux-ui.md) — console/desktop Linux não fazem parte da experiência normal
