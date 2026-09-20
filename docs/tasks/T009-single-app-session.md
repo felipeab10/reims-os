@@ -75,9 +75,10 @@ REIMS_VGPU_BACKEND=vulkan  default se ausente
 Por isso o appliance tem um caminho explícito, `REIMS_VGPU_X11_WMLESS` (default `0`; só a sessão do Reims o liga):
 
 - a janela é criada `override_redirect`, sem decoração e não redimensionável;
-- posição = `primary_monitor()`, com fallback determinístico para o primeiro monitor disponível;
-- tamanho = `monitor.size()`, aplicado na criação;
-- sem monitor encontrado, a criação é recusada explicitamente (`window_no_monitor`), em vez de cair silenciosamente em 1280x800.
+- a geometria vem de uma política pura e única, `WmLessX11Geometry::resolve`, nesta ordem: (1) monitor primário utilizável; (2) primeiro monitor utilizável; (3) retângulo do root X11; (4) recusa explícita;
+- "utilizável" é `native_id() != 0`. O backend X11 do `winit` devolve um monitor *placeholder* de `1x1` com id `0` quando o RandR não oferece CRTC, em vez de devolver `None`;
+- o root X11 é lido pela conexão que o `ActiveEventLoop` já possui (`HasDisplayHandle` → `RawDisplayHandle::Xlib`, `XRootWindow`/`XGetWindowAttributes` via `x11-dl`): sem `XOpenDisplay`, sem segunda conexão e sem `xrandr`/`xdpyinfo`/`xwininfo` no produto;
+- root com dimensão `<= 1` é recusado (`window_x11_root_geometry_invalid`), nunca aplicado.
 
 `Fullscreen::Borderless` continua sendo pedido. Sem WM ele não move nada, e é ele que faz o `winit` chamar `XSetInputFocus` quando a janela fica visível — o foco de teclado independente de `_NET_ACTIVE_WINDOW` de que esta sessão precisa. O que mudou é que ele deixou de ser a única coisa que define a geometria.
 
@@ -85,11 +86,29 @@ A decisão é pura e testável, `FullscreenStrategy::resolve(window_system, full
 
 Se `reims-launch.sh` retornar, `reims-session.sh` retorna com o mesmo status (via `exec`); nenhum shell, terminal ou desktop é aberto, e não há fallback silencioso para Wayland ou para um desktop.
 
-Testes controlados: `tests/t009-single-app-session.py` (14 testes, `T009_CONTROLLED_TEST_PASS`), com `REIMS_HOST_ACTION_MODE=disabled` e fake `systemctl` primeiro no `PATH` (nunca chamado). Markers de sessão: `T009_X11_ENV`; `T009_DISPLAY_OVERRIDE`; `T009_XAUTHORITY_PRESERVED`; `T009_FULLSCREEN_CONTRACT`; `T009_HOST_WINDOW_CONTRACT`; `T009_VULKAN_CONTRACT`; `T009_WMLESS_X11_CONTRACT`; `T009_WAYLAND_ENV_CLEARED` e `T009_X11_NO_WAYLAND_ENV`; `T009_LAUNCHER_CHAIN`; `T009_EXIT_STATUS_PRESERVED`; `T009_NO_WM_DEPENDENCY`; `T009_NO_SYSTEMCTL`. Markers do seletor no companion: `T009_VGPU_X11_SELECTOR`; `T009_VGPU_X11_REQUIRES_DISPLAY`; `T009_VGPU_AUTO_COMPAT`. Markers Rust do caminho WM-less: `T009_VGPU_WMLESS_STRATEGY`; `T009_VGPU_WMLESS_GEOMETRY`; `T009_VGPU_WMLESS_X11_FULLSCREEN`. Além deles, o reims-vgpu emite na linha always-on `host_window_mode` qual caminho rodou: `window_system=x11 wm=none fullscreen=override_redirect position=+0,+0 size=1920x1080` no appliance, contra `wm=external fullscreen=ewmh` no caminho comum.
+Testes controlados: `tests/t009-single-app-session.py` (14 testes, `T009_CONTROLLED_TEST_PASS`), com `REIMS_HOST_ACTION_MODE=disabled` e fake `systemctl` primeiro no `PATH` (nunca chamado). Markers de sessão: `T009_X11_ENV`; `T009_DISPLAY_OVERRIDE`; `T009_XAUTHORITY_PRESERVED`; `T009_FULLSCREEN_CONTRACT`; `T009_HOST_WINDOW_CONTRACT`; `T009_VULKAN_CONTRACT`; `T009_WMLESS_X11_CONTRACT`; `T009_WAYLAND_ENV_CLEARED` e `T009_X11_NO_WAYLAND_ENV`; `T009_LAUNCHER_CHAIN`; `T009_EXIT_STATUS_PRESERVED`; `T009_NO_WM_DEPENDENCY`; `T009_NO_SYSTEMCTL`. Markers do seletor no companion: `T009_VGPU_X11_SELECTOR`; `T009_VGPU_X11_REQUIRES_DISPLAY`; `T009_VGPU_AUTO_COMPAT`. Markers Rust do caminho WM-less: `T009_VGPU_WMLESS_STRATEGY`; `T009_VGPU_WMLESS_GEOMETRY`; `T009_VGPU_WMLESS_X11_FULLSCREEN`. Markers Rust da política de geometria: `T009_VGPU_WMLESS_PRIMARY_MONITOR`; `T009_VGPU_WMLESS_MONITOR_FALLBACK`; `T009_VGPU_WMLESS_ROOT_FALLBACK`; `T009_VGPU_WMLESS_INVALID_ROOT_REFUSED`; `T009_VGPU_WMLESS_ROOT_ERROR_REFUSED`; `T009_VGPU_WMLESS_GEOMETRY_SOURCE`. Além deles, o reims-vgpu emite na linha always-on `host_window_mode` qual caminho rodou e de onde veio a geometria: `window_system=x11 wm=none fullscreen=override_redirect geometry_source=monitor position=+0,+0 size=1920x1080` (ou `geometry_source=x11_root` quando o fallback respondeu), contra `wm=external fullscreen=ewmh geometry_source=none` no caminho comum.
+
+## Primeiro runtime real: falha de geometria e correção
+
+O primeiro runtime real da T009 rodou num X11 nested controlado (`Xephyr :91`, root `1600x900`, sem window manager) e **falhou**. A evidência fica registrada:
+
+```text
+T009_RUNTIME_STATUS=FAIL_WMLESS_GEOMETRY
+
+host_window_mode window_system=x11 wm=none fullscreen=override_redirect position=+0,+0 size=1x1
+xwininfo -id 0x200002  Width 1, Height 1, Override Redirect State: yes, Map State: IsViewable
+root X11              Width 1600, Height 900
+```
+
+O caminho WM-less foi selecionado corretamente (`wm=none fullscreen=override_redirect`); a janela é que ficou com um pixel. Causa: o backend X11 do `winit 0.30.13` enumera monitores por **CRTCs do RandR 1.2**, e o Xephyr não anexa CRTC ao seu output (`CRTC: 0`, `CRTCs: 0`). Com a lista de CRTCs vazia, `primary_monitor()` devolve o monitor *placeholder* interno do winit — `id: 0`, `1x1`, posição `0,0` — e nunca `None`. A política antiga só tratava `None` como ausência, então `window_no_monitor` nunca disparava e a janela era criada em `1x1`: a mesma classe de falha que o caminho WM-less existe para evitar, apenas com outro número no lugar de 1280x800.
+
+Correção (reims-vgpu PR #5, commit `fix(window): fall back to X11 root geometry [T009]`): a geometria virou uma política pura, `WmLessX11Geometry::resolve`, com a ordem já descrita e a fonte carregada no resultado. O placeholder é reconhecido por **identidade** (`native_id() == 0`; `is_dummy()` do winit é exatamente `id == 0` e é `pub(crate)`), não por tamanho. Sem monitor utilizável, o retângulo do root X11 é a resposta, lido pela conexão do próprio event loop. Recusas tipadas: `window_x11_root_handle` (display handle não é Xlib), `window_x11_root_geometry` (a chamada Xlib falhou) e `window_x11_root_geometry_invalid` (root `<= 1`). A linha `host_window_mode` ganhou `geometry_source=monitor|x11_root|none`, para que um fallback nunca passe por monitor medido.
+
+O runtime que falhou não foi descartado: a evidência ficou em `/tmp/reims-t009-xephyr-oY7L8A/` (`reims-vgpu-fail.delta.frozen.log`, `qemu.environ`, `xwininfo-*`) e em `/home/felipeab10/Documentos/reims-t009-runtime-oY7L8A/` (`result.json`, `lifecycle.log`). O encerramento dele classificou `EXTERNAL_SIGNAL`/`supervisor_signal` porque a janela de 1 pixel tornava o Apple menu inalcançável; isso não é defeito de T005–T008 e nada foi alterado por causa disso.
 
 ### Validação real pendente
 
-A validação real fica para a rodada seguinte, depois da revisão remota. `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
+O primeiro runtime provou o backend e o servidor, mas falhou na geometria. Com a correção acima, um novo runtime é necessário para provar a janela de verdade. `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
 2. **Servidor** — o `DISPLAY` atendido por um servidor Xorg/Xephyr controlado nesta sessão dedicada, explicitamente não pelo Xwayland do niri. A evidência é qual servidor atende o display, não o nome da variável.
@@ -103,6 +122,6 @@ position          = +0+0
 override_redirect = yes
 ```
 
-O valor exato depende do servidor usado.
+O valor exato depende do servidor usado. No harness `Xephyr` já validado, o esperado depois da correção é `geometry_source=x11_root` com `position=+0,+0 size=1600x900`, porque aquele servidor não tem CRTC; num Xorg físico, `geometry_source=monitor`.
 
 Nesta rodada: `REAL_XORG_SESSION_STARTED=no`, `REAL_MACOS_VM_STARTED=no`, nenhum unit systemd criado, T010 não iniciada.
