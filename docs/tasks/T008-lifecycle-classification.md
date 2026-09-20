@@ -1,6 +1,6 @@
 # T008 — Diferenciar shutdown/reboot normal de crash/kernel panic
 
-Status: `[ ]` não iniciada
+Status: `[-]` em implementação/validação
 
 Dependências: **T005** implementada; complementa **T006** e **T007**.
 
@@ -123,6 +123,14 @@ Registrar nesta task:
 - exemplo de resultado estruturado para shutdown, reboot e panic;
 - confirmação de integração segura com T006/T007.
 
-## Histórico
+## Implementação em validação
 
-Nenhuma implementação validada ainda.
+Status desta rodada: o supervisor mantém uma única fonte de decisão em `classify_session(facts)`, preservando `classify(facts)` como compatibilidade da T005. A decisão somente ocorre após o término do launcher/QEMU, drenagem do QMP e releitura integral do serial; o `qemu.log` final é analisado com offset registrado na identificação do QEMU.
+
+A precedência efetiva é: (1) marcador de panic no serial; (2) fatal explícito contextual de Vulkan/Reims ou QEMU, incluindo `VK_ERROR_DEVICE_LOST`, segmentation fault e abort/assertion; (3) sinal externo conhecido; (4) último evento terminal QMP, com `SHUTDOWN` ou `RESET` em `installed`; (5) término sem evidência suficiente. Exit code zero isolado permanece `UNKNOWN_EXIT`. O último terminal é usado, portanto RESET → SHUTDOWN resulta em shutdown e SHUTDOWN → RESET em reboot. Panic preservado sempre vence eventos posteriores.
+
+Cada resultado mantém schema 1 e acrescenta `classification_reason`, `primary_evidence`, `sources_consulted`, `recovery_required`, `recovery` e diagnósticos curtos de panic. A recuperação é tentada somente após a classificação final, via `scripts/reims-state.py transition recovery` e `REIMS_STATE_ROOT`; falha de transição preserva o resultado e adiciona `recovery_transition_failed`. Panic, QEMU fatal, Reims/Vulkan fatal e UNKNOWN exigem recovery; shutdown, reboot e sinal externo não exigem.
+
+A fonte de log de kernel do host para NVIDIA Xid/NVRM e OOM killer não está disponível no desenho atual sem sudo: `HOST_KERNEL_LOG_SOURCE=UNAVAILABLE`. Não há coletor privilegiado nem inferência desses eventos sem evidência. A mensagem `fatal: No names found, cannot describe anything.` é explicitamente ignorada como ruído benigno de `git describe ... || :` quando isolada.
+
+A matriz controlada está em `tests/t008-lifecycle-classification.py` e cobre shutdown, reboot, panic/RESET/SHUTDOWN, fatal precedence, sinais, ordem terminal QMP, rc=0 conservador, texto fatal benigno, QMP error não fatal, evidência primária, fontes consultadas, offset de log, política/transição de recovery e indisponibilidade de host log. T005 permanece em regressão; T006 e T007 não são iniciadas nesta rodada. Nenhuma ação `systemctl poweroff`/`systemctl reboot` e nenhuma VM macOS real foram executadas.
