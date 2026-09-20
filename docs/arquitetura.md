@@ -36,7 +36,7 @@ A versão 0.1.0 suporta somente:
 
 Tahoe e versões anteriores ficam fora do escopo da 0.1.0.
 
-A base Linux será inicialmente Ubuntu LTS em instalação mínima. A ISO deve permitir que o usuário faça a instalação normal oferecida pela distribuição base. A customização do Reims OS entra no primeiro boot do sistema instalado.
+A base Linux será Ubuntu LTS na variante Server/minimized. A ISO do Reims OS usa o instalador TUI do Ubuntu Server/Subiquity como base, mas com fluxo controlado pelo produto: branding Reims OS, rede obrigatória antes de prosseguir e somente as escolhas necessárias ao appliance. Não haverá desktop Linux tradicional instalado por padrão.
 
 ## 3. Princípios arquiteturais
 
@@ -101,21 +101,31 @@ As dependências são materializadas seletivamente pelo `scripts/bootstrap-deps.
 
 ## 4. Fluxo de instalação
 
-### 4.1 Live Linux
+### 4.1 ISO e instalador TUI
 
 ```text
-Boot da ISO
+Boot da ISO Reims OS
   ↓
-Instalador normal da distribuição base
+Subiquity/TUI com branding Reims OS
   ↓
-Usuário escolhe idioma, teclado, disco, usuário e rede
+Idioma + teclado
   ↓
-Instalação do Linux
+Rede obrigatória
+  ├─ Ethernet/DHCP
+  └─ Wi-Fi: scan → SSID → senha
+  ↓
+Validação de Internet real (rota + DNS + HTTPS)
+  ↓
+Disco do host
+  ↓
+Instalação Ubuntu Server minimized + componentes Reims
   ↓
 Reboot
 ```
 
-A 0.1.0 não terá instalador de Linux próprio.
+A 0.1.0 não cria um instalador Linux do zero: reutiliza Subiquity como engine/TUI e customiza o fluxo/branding. Não deve existir opção de continuar offline. A presença de link local ou endereço IP não basta; o instalador deve validar conectividade externa real antes de liberar a instalação.
+
+O usuário não deve ser exposto a escolhas sem valor para o appliance, como seleção de desktop, snaps opcionais, Ubuntu Pro, servidor SSH ou hostname arbitrário. Identidade e configuração internas do host devem ter defaults controlados pelo Reims OS.
 
 ### 4.2 Primeiro boot
 
@@ -234,13 +244,13 @@ Linux kernel + systemd
   ↓
 Plymouth/tela de boot
   ↓
-Rede mínima
+NetworkManager
   ↓
 reims-update.service
   ↓
 reims-session.service
   ↓
-compositor Wayland mínimo
+Xorg dedicado (single-app)
   ↓
 reims-appliance.service
   ↓
@@ -273,11 +283,27 @@ REIMS_VGPU_FULLSCREEN=1
 
 A 0.1.0 não deve depender de automações frágeis como `xdotool`, `wmctrl` ou atalhos manuais para entrar em tela cheia.
 
-## 7. Compositor
+## 7. Sessão gráfica do host
 
-A 0.1.0 mantém um compositor Wayland mínimo no host.
+A 0.1.0 não terá desktop Linux tradicional e não depende de um window manager/painel para o fluxo normal.
 
-Não faz parte do primeiro release remover completamente Wayland/compositor e apresentar diretamente via DRM/KMS. Saída DRM/KMS direta pode ser estudada em versões futuras.
+A sessão gráfica produtiva é dedicada ao appliance:
+
+```text
+systemd
+  ↓
+Xorg :0
+  ↓
+reims-session
+  ↓
+reims-vgpu / QEMU
+  ↓
+janela Reims fullscreen
+```
+
+Não instalar GNOME, KDE, XFCE, Openbox ou lxpanel como parte da experiência normal. Xorg existe somente como infraestrutura para a janela host do Reims/winit/Vulkan e para telas próprias de Setup/Recovery quando necessário.
+
+Apresentação direta via DRM/KMS continua fora do escopo da 0.1.0 e pode ser estudada futuramente.
 
 ## 8. Lifecycle do macOS e do host
 
@@ -417,6 +443,8 @@ appliance/
 ├── distro/
 │   ├── packages.txt
 │   ├── build-iso.sh
+│   ├── autoinstall/
+│   ├── subiquity/
 │   ├── overlay/
 │   ├── plymouth/
 │   └── installer/
@@ -537,11 +565,12 @@ A ordem arquitetural é:
 2. simplificação do `reims-vm-manager.sh`;
 3. fullscreen nativo no Reims;
 4. supervisor de lifecycle;
-5. serviços systemd e auto-boot;
+5. sessão gráfica Xorg single-app + serviços systemd e auto-boot;
 6. updater transacional;
 7. tela de boot/update;
-8. geração da ISO mínima;
-9. testes de instalação e atualização end-to-end;
-10. release 0.1.0.
+8. Ubuntu Server minimized + customização Subiquity/TUI + branding;
+9. geração reproduzível da ISO Reims OS;
+10. testes clean-room de Ethernet/Wi-Fi, instalação e atualização end-to-end;
+11. release 0.1.0.
 
 A ISO não deve ser o primeiro passo: primeiro validamos toda a experiência do appliance em um Linux de desenvolvimento conhecido.

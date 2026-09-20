@@ -38,10 +38,10 @@ Uma task só deve mudar para `[x]` após existir evidência de implementação e
 
 ### Inicialização automática
 
-- [ ] T009 — Criar sessão gráfica mínima dedicada
+- [ ] [T009 — Criar sessão gráfica dedicada single-app](T009-single-app-session.md) — Xorg mínimo + Reims fullscreen; sem GNOME/KDE/XFCE, Openbox, painel ou desktop tradicional
 - [ ] T010 — Criar serviços systemd do appliance
-- [ ] T011 — Implementar first-boot automático
-- [ ] T012 — Ocultar desktop/console Linux no fluxo normal
+- [ ] [T011 — Implementar first-boot automático e Reims Setup](T011-firstboot-setup.md)
+- [ ] [T012 — Tornar o Linux invisível no fluxo normal](T012-hide-linux-ui.md) — console/desktop Linux não fazem parte da experiência normal
 - [ ] [T034 — UI de progresso da instalação](T034-install-progress-ui.md)
 
 ### Atualização
@@ -60,10 +60,10 @@ Uma task só deve mudar para `[x]` após existir evidência de implementação e
 
 ### Distribuição
 
-- [ ] T021 — Definir pacote mínimo do Ubuntu base
-- [ ] T022 — Criar overlay/configuração da distribuição
-- [ ] T023 — Criar build reproduzível da ISO
-- [ ] T024 — Validar instalação clean-room do Linux + primeiro boot
+- [ ] [T021 — Definir Ubuntu Server minimized e pacote mínimo](T021-ubuntu-server-minimized.md)
+- [ ] [T022 — Customizar instalador TUI/Subiquity, rede obrigatória e branding Reims OS](T022-subiquity-network-branding.md)
+- [ ] [T023 — Criar overlay e build reproduzível da ISO Reims OS](T023-reims-iso-build.md)
+- [ ] [T024 — Validar instalação clean-room da ISO Reims OS](T024-clean-room-install.md) — Ethernet/Wi-Fi → Internet validada → instalação → first boot → macOS
 
 ### Matriz macOS
 
@@ -104,7 +104,7 @@ T001 → T002 → T003 → T004
           T032
 ```
 
-Não iniciar a construção final da ISO antes de o modo persistente, o VM Manager simplificado, fullscreen e lifecycle estarem funcionais em um host de desenvolvimento conhecido.
+Não iniciar a construção final da ISO antes de o modo persistente, o VM Manager simplificado, fullscreen e lifecycle estarem funcionais em um host de desenvolvimento conhecido. A ISO 0.1.0 usa Ubuntu Server/Subiquity em modo TUI customizado, exige conectividade real antes de prosseguir e instala uma base minimized sem desktop Linux tradicional.
 
 ## Protocolo de handoff para implementação
 

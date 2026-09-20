@@ -16,16 +16,22 @@ Ficam fora do escopo da 0.1.0:
 - versões anteriores ao Ventura;
 - múltiplas VMs simultâneas;
 - passthrough de GPU física;
-- apresentação direta por DRM/KMS sem compositor;
-- instalador Linux próprio.
+- apresentação direta por DRM/KMS;
+- implementação de um instalador Linux inteiramente próprio no lugar do Subiquity.
 
-## 2. Base Linux
+## 2. Base Linux e instalação do host
 
-- Base inicial: Ubuntu LTS em instalação mínima.
-- O usuário instala o Linux usando o instalador normal da distribuição base.
+- Base inicial: Ubuntu LTS Server/minimized.
+- A ISO é apresentada como Reims OS e usa Subiquity/TUI como engine do instalador.
+- O instalador deve exigir rede funcional antes de permitir continuar.
+- Ethernet deve usar configuração automática quando possível; em máquinas com Wi-Fi o usuário deve poder selecionar SSID e informar a credencial no próprio TUI.
+- A validação de rede deve comprovar Internet real, incluindo rota, resolução DNS e acesso HTTPS; apenas obter IP local não é suficiente.
+- Não deve existir opção de concluir a instalação offline na 0.1.0.
+- O instalador deve evitar escolhas que não fazem parte do appliance (desktop, Ubuntu Pro, snaps opcionais, SSH e outras opções genéricas sem necessidade).
+- O branding visível deve usar “Reims OS”; a derivação técnica deve continuar explícita em metadados adequados, por exemplo `ID=reims` e `ID_LIKE=ubuntu`.
 - Após o primeiro reboot, o Reims OS assume o fluxo.
 - O Linux não deve expor um desktop tradicional no uso normal.
-- O host deve manter apenas os componentes necessários para KVM/QEMU/Reims, rede, áudio, Vulkan, compositor mínimo, atualização e recuperação.
+- O host deve manter apenas os componentes necessários para KVM/QEMU/Reims, NetworkManager, áudio, Vulkan, Xorg single-app, atualização e recuperação.
 
 ## 3. Primeiro boot
 
@@ -142,12 +148,13 @@ Requisito principal:
 
 O sistema atual de snapshots/rails deve continuar disponível para desenvolvimento, testes, recovery e rollback.
 
-## 6. Reims VGPU
+## 6. Reims VGPU e sessão gráfica
 
 - `reims-vgpu-pci` é obrigatório no fluxo principal do produto.
 - `REIMS_VGPU_WINDOW=1` deve ser usado no caminho normal.
 - deve existir fullscreen nativo e automático;
-- o usuário não deve precisar pressionar atalhos ou interagir com o compositor Linux para colocar a VM em tela cheia.
+- o host deve usar uma sessão Xorg dedicada/single-app, sem desktop tradicional, window manager ou painel no fluxo normal;
+- o usuário não deve precisar pressionar atalhos nem interagir com UI Linux para colocar a VM em tela cheia.
 
 ## 7. Lifecycle
 
