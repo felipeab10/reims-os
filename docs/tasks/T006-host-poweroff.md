@@ -1,6 +1,6 @@
 # T006 — Shutdown do macOS desliga o host
 
-Status: `[ ]` não iniciada
+Status: `[-]` em implementação/validação
 
 Dependência: **T005** concluída e validada.
 
@@ -80,6 +80,14 @@ Registrar nesta task:
 - logs demonstrando que apenas `GUEST_SHUTDOWN` dispara a ação;
 - resultado de pelo menos um teste real seguro ou justificativa explícita se ainda não executável.
 
+## Implementação controlada em validação
+
+T006 consome exclusivamente o result.json final persistido pelo supervisor/T008; não relê QMP, serial, qemu.log ou exit codes para reclassificar a sessão. A combinação elegível é exatamente classification=GUEST_SHUTDOWN, appliance_state=installed e recovery_required=false.
+
+REIMS_HOST_ACTION_MODE possui os modos disabled (default seguro), dry-run e systemd. O consumidor gera host-action.json atomicamente, registra eventos no lifecycle.log, usa claim atômico por sessão para idempotência e executa sync antes de qualquer chamada systemctl poweroff. O caminho systemd não usa sudo/su/pkexec e foi validado somente com executor mockado; nenhum poweroff real foi executado. Modo desconhecido falha conservadoramente. Reboot pertence à T007 e não é implementado aqui.
+
+A matriz controlada cobre shutdown elegível, classificações não elegíveis, estado installing, rc=0, recovery guard, resultado inválido, final-result-only, auditoria, dry-run/systemd e idempotência. T006 permanece em implementação/validação até revisão da PR.
+
 ## Histórico
 
-Nenhuma implementação validada ainda.
+Implementação controlada iniciada nesta rodada.
