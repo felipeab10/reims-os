@@ -161,6 +161,21 @@ class T009SingleAppSessionTests(unittest.TestCase):
         self.assertEqual(bad.returncode, direct_bad.returncode)
         print("T009_EXIT_STATUS_PRESERVED=PASS")
 
+    def test_wm_less_x11_contract(self):
+        # Full-screen in this session cannot be an EWMH request: there is no
+        # window manager to answer one, so winit's Borderless hint alone would
+        # leave the window at its creation size. The session must state the
+        # WM-less contract, and an operator cannot switch it off — there is no
+        # desktop to fall back to.
+        proc = self.run_session()
+        self.assertEqual(self.contract(proc)["REIMS_VGPU_X11_WMLESS"], "1")
+        proc = self.run_session(REIMS_VGPU_X11_WMLESS="0")
+        self.assertEqual(self.contract(proc)["REIMS_VGPU_X11_WMLESS"], "1")
+        proc = self.run_session(REIMS_VGPU_X11_WMLESS="")
+        self.assertEqual(self.contract(proc)["REIMS_VGPU_X11_WMLESS"], "1")
+        self.assertIn("REIMS_VGPU_X11_WMLESS=1", SESSION.read_text())
+        print("T009_WMLESS_X11_CONTRACT=PASS")
+
     def test_unknown_argument_rejected(self):
         proc = self.run_session(args=("--not-a-flag",))
         self.assertEqual(proc.returncode, 64)
@@ -173,6 +188,7 @@ class T009SingleAppSessionTests(unittest.TestCase):
                           "xdotool", "wmctrl", "gnome-session", "startplasma"):
             self.assertNotIn(forbidden, text, "session must not start " + forbidden)
         self.assertIn("REIMS_VGPU_FULLSCREEN", text)
+        self.assertIn("REIMS_VGPU_X11_WMLESS", text)
         print("T009_NO_WM_DEPENDENCY=PASS")
 
     # -- reims-vgpu selector ---------------------------------------------------

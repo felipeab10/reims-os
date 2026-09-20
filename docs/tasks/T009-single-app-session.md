@@ -60,6 +60,7 @@ WAYLAND_DISPLAY unset
 WAYLAND_SOCKET unset
 XAUTHORITY preservado; REIMS_XAUTHORITY é override explícito
 REIMS_VGPU_WINDOW_SYSTEM=x11
+REIMS_VGPU_X11_WMLESS=1    contrato da sessão, não desligável nela
 REIMS_VGPU_WINDOW=1        default se ausente
 REIMS_VGPU_FULLSCREEN=1    default se ausente
 REIMS_VGPU_BACKEND=vulkan  default se ausente
@@ -67,12 +68,41 @@ REIMS_VGPU_BACKEND=vulkan  default se ausente
 
 `winit 0.30` não tem `WINIT_UNIX_BACKEND` e prefere Wayland quando `WAYLAND_DISPLAY`/`WAYLAND_SOCKET` e `DISPLAY` coexistam. Por isso o seletor do companion remove as variáveis Wayland em `x11` e recusa quando `DISPLAY` está vazio, e o `boot-x86.sh` não recria `WAYLAND_DISPLAY` nesse modo. Um `DISPLAY` definido, por si só, não prova X11.
 
+## Modo X11 sem window manager (correção do blocker da revisão)
+
+`winit 0.30` implementa `Fullscreen::Borderless` no X11 como um pedido EWMH: envia `_NET_WM_STATE_FULLSCREEN` ao root e espera que um window manager redimensione a janela. A sessão dedicada do Reims não tem window manager por projeto, então o pedido não tem quem o atenda e a janela permanece no tamanho com que foi criada — mesmo com `REIMS_VGPU_FULLSCREEN=1`. Não é defeito do winit; é o contrato do EWMH.
+
+Por isso o appliance tem um caminho explícito, `REIMS_VGPU_X11_WMLESS` (default `0`; só a sessão do Reims o liga):
+
+- a janela é criada `override_redirect`, sem decoração e não redimensionável;
+- posição = `primary_monitor()`, com fallback determinístico para o primeiro monitor disponível;
+- tamanho = `monitor.size()`, aplicado na criação;
+- sem monitor encontrado, a criação é recusada explicitamente (`window_no_monitor`), em vez de cair silenciosamente em 1280x800.
+
+`Fullscreen::Borderless` continua sendo pedido. Sem WM ele não move nada, e é ele que faz o `winit` chamar `XSetInputFocus` quando a janela fica visível — o foco de teclado independente de `_NET_ACTIVE_WINDOW` de que esta sessão precisa. O que mudou é que ele deixou de ser a única coisa que define a geometria.
+
+A decisão é pura e testável, `FullscreenStrategy::resolve(window_system, fullscreen, x11_wmless)`, e só devolve o caminho WM-less quando as três respostas concordam. Wayland, X11 com window manager e `auto` continuam no caminho antigo.
+
 Se `reims-launch.sh` retornar, `reims-session.sh` retorna com o mesmo status (via `exec`); nenhum shell, terminal ou desktop é aberto, e não há fallback silencioso para Wayland ou para um desktop.
 
-Testes controlados: `tests/t009-single-app-session.py` (13 testes, `T009_CONTROLLED_TEST_PASS`), com `REIMS_HOST_ACTION_MODE=disabled` e fake `systemctl` primeiro no `PATH` (nunca chamado). Markers: `T009_X11_ENV`; `T009_DISPLAY_OVERRIDE`; `T009_XAUTHORITY_PRESERVED`; `T009_FULLSCREEN_CONTRACT`; `T009_HOST_WINDOW_CONTRACT`; `T009_VULKAN_CONTRACT`; `T009_WAYLAND_ENV_CLEARED` e `T009_X11_NO_WAYLAND_ENV`; `T009_LAUNCHER_CHAIN`; `T009_EXIT_STATUS_PRESERVED`; `T009_VGPU_X11_SELECTOR`; `T009_VGPU_X11_REQUIRES_DISPLAY`; `T009_VGPU_AUTO_COMPAT`; `T009_NO_WM_DEPENDENCY`; `T009_NO_SYSTEMCTL`.
+Testes controlados: `tests/t009-single-app-session.py` (14 testes, `T009_CONTROLLED_TEST_PASS`), com `REIMS_HOST_ACTION_MODE=disabled` e fake `systemctl` primeiro no `PATH` (nunca chamado). Markers de sessão: `T009_X11_ENV`; `T009_DISPLAY_OVERRIDE`; `T009_XAUTHORITY_PRESERVED`; `T009_FULLSCREEN_CONTRACT`; `T009_HOST_WINDOW_CONTRACT`; `T009_VULKAN_CONTRACT`; `T009_WMLESS_X11_CONTRACT`; `T009_WAYLAND_ENV_CLEARED` e `T009_X11_NO_WAYLAND_ENV`; `T009_LAUNCHER_CHAIN`; `T009_EXIT_STATUS_PRESERVED`; `T009_NO_WM_DEPENDENCY`; `T009_NO_SYSTEMCTL`. Markers do seletor no companion: `T009_VGPU_X11_SELECTOR`; `T009_VGPU_X11_REQUIRES_DISPLAY`; `T009_VGPU_AUTO_COMPAT`. Markers Rust do caminho WM-less: `T009_VGPU_WMLESS_STRATEGY`; `T009_VGPU_WMLESS_GEOMETRY`; `T009_VGPU_WMLESS_X11_FULLSCREEN`. Além deles, o reims-vgpu emite na linha always-on `host_window_mode` qual caminho rodou: `window_system=x11 wm=none fullscreen=override_redirect position=+0,+0 size=1920x1080` no appliance, contra `wm=external fullscreen=ewmh` no caminho comum.
 
 ### Validação real pendente
 
-A validação em runtime real fica para a rodada seguinte, depois da revisão remota. Ela deve procurar evidência de que o `winit` abriu X11 de fato, e não Wayland: o mecanismo de captura do reims-vgpu reporta `x11_grab_keyboard` quando faz `XGrabKeyboard` e `x11_unavailable` quando recusa. A prova exigida é essa observação (`window_capture_mode` / `mechanism=x11_grab_keyboard`) combinada com a janela fullscreen, não apenas a presença de `DISPLAY` no ambiente.
+A validação real fica para a rodada seguinte, depois da revisão remota. `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
+
+1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
+2. **Servidor** — o `DISPLAY` atendido por um servidor Xorg/Xephyr controlado nesta sessão dedicada, explicitamente não pelo Xwayland do niri. A evidência é qual servidor atende o display, não o nome da variável.
+
+Além do log, medir a janela. `REIMS_VGPU_FULLSCREEN=1` é variável de ambiente e não prova fullscreen; a linha `host_window_mode` diz o que foi *pedido* (`wm=none fullscreen=override_redirect position=+0,+0 size=1920x1080`), e a prova é a geometria observada contra o root X11:
+
+```text
+root X11          = 1920x1080
+Reims window      = 1920x1080
+position          = +0+0
+override_redirect = yes
+```
+
+O valor exato depende do servidor usado.
 
 Nesta rodada: `REAL_XORG_SESSION_STARTED=no`, `REAL_MACOS_VM_STARTED=no`, nenhum unit systemd criado, T010 não iniciada.

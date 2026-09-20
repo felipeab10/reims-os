@@ -65,10 +65,18 @@ elif [ -n "${XAUTHORITY:-}" ]; then
 fi
 
 # --- Reims environment --------------------------------------------------------
-# The session is the X11 one: the window system is not operator-optional here.
+# The session is the X11 one, and it has no window manager. Neither of those is
+# operator-optional here, so the two that define the session are set rather than
+# defaulted: a silent fallback would be a window that opens at its creation size
+# and never fills the screen.
+#
+#   REIMS_VGPU_WINDOW_SYSTEM=x11  what selects the X11 backend in winit 0.30
+#   REIMS_VGPU_X11_WMLESS=1       how the window takes the screen without a WM
+#
 # The remaining knobs keep product defaults but never overwrite an explicit
 # operator value.
 export REIMS_VGPU_WINDOW_SYSTEM=x11
+export REIMS_VGPU_X11_WMLESS=1
 : "${REIMS_VGPU_WINDOW:=1}"
 : "${REIMS_VGPU_FULLSCREEN:=1}"
 : "${REIMS_VGPU_BACKEND:=vulkan}"
@@ -81,6 +89,7 @@ if [ "$DRY" -eq 1 ]; then
   printf 'WAYLAND_SOCKET=%s\n' "${WAYLAND_SOCKET-<unset>}"
   printf 'XAUTHORITY=%s\n' "${XAUTHORITY-<unset>}"
   printf 'REIMS_VGPU_WINDOW_SYSTEM=%s\n' "$REIMS_VGPU_WINDOW_SYSTEM"
+  printf 'REIMS_VGPU_X11_WMLESS=%s\n' "$REIMS_VGPU_X11_WMLESS"
   printf 'REIMS_VGPU_WINDOW=%s\n' "$REIMS_VGPU_WINDOW"
   printf 'REIMS_VGPU_FULLSCREEN=%s\n' "$REIMS_VGPU_FULLSCREEN"
   printf 'REIMS_VGPU_BACKEND=%s\n' "$REIMS_VGPU_BACKEND"
