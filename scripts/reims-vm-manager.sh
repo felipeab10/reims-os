@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+source "$ROOT/scripts/reims-fullscreen-env.sh"
+reims_resolve_fullscreen persistent
 REIMS_VGPU_ROOT="${REIMS_VGPU_ROOT:-$ROOT/components/reims-vgpu}"
 OSX_KVM="${OSX_KVM:-$ROOT/third_party/OSX-KVM}"
 SERIAL_GENERATOR_ROOT="${SERIAL_GENERATOR_ROOT:-$ROOT/third_party/osx-serial-generator}"

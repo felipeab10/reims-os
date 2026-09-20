@@ -97,7 +97,7 @@ O `reims-os` é o produto/appliance e `reims-vgpu` é seu componente de virtuali
 
 ## Bootstrap seletivo de dependências
 
-As dependências upstream são materializadas seletivamente pelo `scripts/bootstrap-deps.sh`. Os submodules históricos internos de `reims-vgpu` não são dependências do appliance; o Reims OS usa seus próprios checkouts canônicos de OSX-KVM e osx-serial-generator. Os submodules nested de firmware e testes do QEMU são lazy/on-demand e só devem ser inicializados quando um build concreto exigir.
+As dependências são materializadas seletivamente pelo `scripts/bootstrap-deps.sh`: o Reims OS possui os checkouts canônicos de OSX-KVM e osx-serial-generator, enquanto o reims-vgpu mantém somente seu nested `vendor/qemu`. Os submodules nested de firmware e testes do QEMU continuam lazy/on-demand e só devem ser inicializados quando um build concreto exigir; nunca usar atualização global `--recursive`.
 
 ## 4. Fluxo de instalação
 
