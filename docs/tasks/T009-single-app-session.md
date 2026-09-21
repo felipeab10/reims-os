@@ -273,6 +273,25 @@ diagnóstico, mas não prova desktop, estabilidade completa ou shutdown natural.
 O artefato está em `/tmp/reims-t009-r18-96Qk9u/`; a cópia de estado usada foi
 `/home/felipeab10/Documentos/reims-t009-runtime-pause-candidate-reims-t009-r18-96Qk9u/`.
 
+### Runtime #20: fixture T002 autoritativa sob o build atual
+
+Foi feita uma nova cópia reflink somente leitura da fixture autoritativa de
+T002, `/home/felipeab10/Documentos/reims-t002-fixtures/runtime-sequoia-retry-2`.
+`qemu-img check` passou e a cópia contém o mesmo disco instalado usado pela
+evidência T002 (`ProductVersion 15.8`, SSH e autoboot documentados). Com o
+QEMU/reims-vgpu atual do PR, Xephyr e a seleção explícita `Return` no OpenCore,
+o comportamento foi novamente: primeiro frame Vulkan, handoff ao XNU,
+nenhum login SSH e `QMP SHUTDOWN guest=true reason=guest-reset`.
+
+Essa rodada também resolveu uma ambiguidade de comparação. A evidência histórica
+de desktop foi produzida em outro checkout (`reims-macos-appliance-runtime`),
+com QEMU pré-construído, Wayland e janela `948x1034`; não é uma validação do
+build atual, do servidor Xephyr ou do caminho WM-less desta PR. Portanto, a
+fixture não deve mais ser classificada como installer/recovery, mas o desktop
+histórico também não pode ser usado como prova de não regressão do build atual.
+Artefatos da repetição: `/tmp/reims-t009-r20-i7fElV/`; cópia isolada:
+`/home/felipeab10/Documentos/reims-t009-runtime-t002-candidate-reims-t009-r19-7P4V7x/`.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
