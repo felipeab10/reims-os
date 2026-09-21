@@ -419,6 +419,35 @@ build atual sem um A/B adicional com o QEMU histórico exato.
 Artefatos: `/tmp/reims-t009-r30b-t001-ZwWWgR/`; cópia isolada:
 `/home/felipeab10/Documentos/reims-t009-runtime-t001-candidate-r30-t001/`.
 
+### Runtimes #31–#33: A/B do QEMU/staticlib
+
+O candidato T001 foi repetido com o QEMU histórico exato
+(`reims-macos-appliance-runtime`, revisão `bb171c33`) e o ROM GOP histórico.
+Esse braço publicou `first guest frame presented via rail resident`, abriu o
+serviço SSH e chegou visualmente à tela de login do macOS. A captura
+`desktop.png` mostra o lock screen às 18:14. Como a credencial histórica não
+estava disponível para autenticação e shutdown, a sessão foi encerrada
+externamente e classificada como `EXTERNAL_SIGNAL`; não houve panic ou reset.
+
+Mantendo o mesmo candidato e ROM histórico, mas voltando ao QEMU/staticlib
+atual, o guest não chegou à tela de login nem publicou o primeiro frame real;
+houve dois resets QMP. Isso isola o ROM GOP: ele não é a causa suficiente da
+regressão. O artefato que muda o resultado é o QEMU ligado à staticlib
+reims-vgpu.
+
+Por fim, o QEMU pré-hardening da revisão `158888b` foi executado pelo launcher
+atual, com a mesma fixture e ROM. Ele também não publicou o primeiro frame do
+guest nem ofereceu SSH. Portanto, `ff076191` não introduziu a regressão. O
+primeiro commit ruim está no intervalo entre `bb171c33` (bom) e `158888b`
+(ruim), que contém as mudanças T009 de seleção X11, fullscreen WM-less,
+geometria, foco e cursor.
+
+Artefatos:
+
+- bom histórico: `/tmp/reims-t009-r31-t001-historical-2EwXY1/`;
+- QEMU atual + ROM histórico: `/tmp/reims-t009-r32-current-qemu-oldrom-spJ2pM/`;
+- pré-hardening `158888b`: `/tmp/reims-t009-r33b-prehardening-avm7DC/`.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
