@@ -224,6 +224,12 @@ houve SIGSEGV, `VK_ERROR_DEVICE_LOST` ou pânico serial. A fixture original não
 foi escrita. Isso reforça que o bloqueio restante é a finalização/boot do guest,
 não uma falha Vulkan observada nesta implementação.
 
+Como controle, a mesma fixture limpa foi iniciada novamente com os recursos
+históricos de sua validação (`16G`, `8` cores). O resultado foi idêntico:
+primeiro frame Vulkan, porta TCP aberta sem banner SSH completo e
+`GUEST_REBOOT`/`guest-reset` com exit 0. A hipótese de que o reboot fosse
+causado apenas pelo perfil `8G/4` fica, portanto, descartada.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
