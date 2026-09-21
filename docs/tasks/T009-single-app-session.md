@@ -208,6 +208,12 @@ harness; não houve processo QEMU/Xephyr ativo após a limpeza. Esta rodada
 confirma estabilidade Vulkan/QEMU dentro da janela observada, mas não confirma
 shutdown natural do guest; por isso T009 continua `[-]`.
 
+Uma sondagem posterior de lifecycle (runtime #7) também terminou sem sinal
+externo: `QMP SHUTDOWN guest=true reason=guest-reset`, `qemu_exit_code=0` e
+`classification=GUEST_REBOOT`. Isso confirma que o supervisor correlaciona e
+classifica um terminal produzido pelo guest, sem marcadores Vulkan fatais, mas
+não substitui `guest-shutdown`; a distinção continua aberta para T009.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
