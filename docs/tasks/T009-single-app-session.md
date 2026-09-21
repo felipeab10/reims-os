@@ -80,7 +80,7 @@ Por isso o appliance tem um caminho explícito, `REIMS_VGPU_X11_WMLESS` (default
 - o root X11 é lido pela conexão que o `ActiveEventLoop` já possui (`HasDisplayHandle` → `RawDisplayHandle::Xlib`, `XRootWindow`/`XGetWindowAttributes` via `x11-dl`): sem `XOpenDisplay`, sem segunda conexão e sem `xrandr`/`xdpyinfo`/`xwininfo` no produto;
 - root com dimensão `<= 1` é recusado (`window_x11_root_geometry_invalid`), nunca aplicado.
 
-`Fullscreen::Borderless` continua sendo pedido. Sem WM ele não move nada, e é ele que faz o `winit` chamar `XSetInputFocus` quando a janela fica visível — o foco de teclado independente de `_NET_ACTIVE_WINDOW` de que esta sessão precisa. O que mudou é que ele deixou de ser a única coisa que define a geometria.
+`Fullscreen::Borderless` continua sendo pedido. Sem WM ele não move nada e, com o monitor dummy do Xephyr, o backend pode retornar antes de solicitar foco. Por isso o appliance solicita e verifica `XSetInputFocus` explicitamente depois de anexar o presenter, pela mesma conexão Xlib da janela; o caminho normal não usa esse foco explícito nem `window.focus_window()`/EWMH.
 
 A decisão é pura e testável, `FullscreenStrategy::resolve(window_system, fullscreen, x11_wmless)`, e só devolve o caminho WM-less quando as três respostas concordam. Wayland, X11 com window manager e `auto` continuam no caminho antigo.
 
@@ -131,9 +131,26 @@ A causa é o monitor dummy do `winit` (`native_id() == 0`): no caminho `Fullscre
 
 Correção follow-up: no caminho `X11 + fullscreen + WM-less`, depois de criar a janela e anexar o presenter, o Reims usa `XSetInputFocus` pela mesma conexão `Display*` dos raw handles Xlib da janela, confirma `IsViewable` com `XGetWindowAttributes` e valida o alvo com `XGetInputFocus`. A linha `host_window_focus ... status=verified` é emitida somente após essa confirmação. O caminho normal não solicita foco explícito, e `window.focus_window()`/EWMH não é usado.
 
-### Validação real pendente — runtime #3
+### Runtime #3: foco/capture confirmados, mouse visual ausente e SIGSEGV GPU
 
-O runtime #1 provou o servidor, mas falhou na geometria; o runtime #2 provou a geometria, mas falhou no input. O runtime #3 deverá provar o foco confirmado e o capture engajado. `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
+O runtime #1 provou o servidor, mas falhou na geometria; o runtime #2 provou a geometria, mas falhou no input; o runtime #3 confirmou foco, capture e teclado, mas não confirmou o ponteiro visual e terminou com `QEMU_FATAL` por SIGSEGV independente no caminho Vulkan:
+
+```text
+geometry_source=x11_root position=+0,+0 size=1600x900
+window=1600x900 override_redirect=yes map_state=IsViewable
+host_window_focus mechanism=x11_set_input_focus status=verified
+host_window_capture_engaged mechanism=x11_grab_keyboard
+USER_KEYBOARD_CONFIRMED=yes
+USER_MOUSE_CONFIRMED=no
+classification=QEMU_FATAL
+classification_reason=qemu_runtime_segfault
+```
+
+O cursor guest só chegava a `qemu_console_set_mouse`/`qemu_console_set_cursor`, enquanto a janela real usa `winit/Vulkan` com `-display none`; não havia consumidor de posição, glyph ou visibilidade na host-window. O transporte `CursorMoved → InputPointerMove → usb-tablet` ficou não provado por falta de observabilidade. O core mostrou `SIGSEGV` em `write_staging_from_runs → stage_buffer_content`, após falhas `vk_slab_allocate_memory` e pressão de registry/slab; isso não foi atribuído ao mouse.
+
+Correção implementada depois do runtime #3: espelhamento latest-wins do cursor guest para a host-window usando `winit::window::CustomCursor`, sem composição Vulkan, sem warp da posição host e com eventos de cursor separados de `FramePublished`. `CursorUpdate` e `CursorGlyph` continuam sendo devolvidos intactos ao caminho QEMU-console. Foi adicionada observabilidade limitada do primeiro pointer move/button e das mudanças de cursor. O runtime #4 permanece pendente; T009 continua `[-]`.
+
+`mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
 2. **Servidor** — o `DISPLAY` atendido por um servidor Xorg/Xephyr controlado nesta sessão dedicada, explicitamente não pelo Xwayland do niri. A evidência é qual servidor atende o display, não o nome da variável.
