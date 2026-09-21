@@ -323,6 +323,30 @@ independente e deve ser investigado no caminho de host-window/X11 ou na
 interação gráfica do guest atual. Artefatos: `/tmp/r26-x35N2I/`; baseline:
 `158888b33c00fc2832260f6ecbf4ce9d169a7ea7`.
 
+### Runtime #27: replay do estado do runtime #4
+
+Para verificar se o resultado interativo do runtime #4 ainda era reproduzível,
+foi feita uma cópia reflink do estado usado naquela rodada
+(`/home/felipeab10/Documentos/reims-t009-runtime-20260921-115920`) e a sessão
+foi repetida com o build atual, `16G/8`, Xephyr/X11 `1600x900`,
+`QEMU_REBOOT_ACTION=reset` e seleção explícita do OpenCore por `Return`.
+O primeiro frame Vulkan apareceu e o `XTest` enviou o evento de teclado, mas o
+guest não ofereceu SSH nem desktop durante aproximadamente dois minutos. O
+QMP registrou somente eventos de execução (RTC/NIC); a rodada foi encerrada
+externamente e classificada como `EXTERNAL_SIGNAL`.
+
+Essa repetição não invalida a evidência end-to-end do runtime #4, que continua
+provando geometria, foco, capture, cursor, movimento e clique naquela sessão.
+Ela mostra, porém, que esse resultado não é reproduzível com o build atual e
+que a procedência do estado importa: a cópia do runtime #4 estava marcada
+como `recovery` e usava o perfil `8G/4`, enquanto a fixture T002 autoritativa é
+`installed` e foi validada historicamente com outro checkout/Wayland. Portanto,
+o bloqueio permanece no boot gráfico pós-XNU, não há base para marcar T009 como
+concluída e não é seguro avançar para merge.
+
+Artefatos: `/tmp/reims-t009-r27-v5lzwn/`; cópia isolada:
+`/home/felipeab10/Documentos/reims-t009-runtime-r4-candidate-reims-t009-r27-v5lzwn/`.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
