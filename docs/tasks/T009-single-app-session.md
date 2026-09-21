@@ -86,7 +86,7 @@ A decisão é pura e testável, `FullscreenStrategy::resolve(window_system, full
 
 Se `reims-launch.sh` retornar, `reims-session.sh` retorna com o mesmo status (via `exec`); nenhum shell, terminal ou desktop é aberto, e não há fallback silencioso para Wayland ou para um desktop.
 
-Testes controlados: `tests/t009-single-app-session.py` (14 testes, `T009_CONTROLLED_TEST_PASS`), com `REIMS_HOST_ACTION_MODE=disabled` e fake `systemctl` primeiro no `PATH` (nunca chamado). Markers de sessão: `T009_X11_ENV`; `T009_DISPLAY_OVERRIDE`; `T009_XAUTHORITY_PRESERVED`; `T009_FULLSCREEN_CONTRACT`; `T009_HOST_WINDOW_CONTRACT`; `T009_VULKAN_CONTRACT`; `T009_WMLESS_X11_CONTRACT`; `T009_WAYLAND_ENV_CLEARED` e `T009_X11_NO_WAYLAND_ENV`; `T009_LAUNCHER_CHAIN`; `T009_EXIT_STATUS_PRESERVED`; `T009_NO_WM_DEPENDENCY`; `T009_NO_SYSTEMCTL`. Markers do seletor no companion: `T009_VGPU_X11_SELECTOR`; `T009_VGPU_X11_REQUIRES_DISPLAY`; `T009_VGPU_AUTO_COMPAT`. Markers Rust do caminho WM-less: `T009_VGPU_WMLESS_STRATEGY`; `T009_VGPU_WMLESS_GEOMETRY`; `T009_VGPU_WMLESS_X11_FULLSCREEN`. Markers Rust da política de geometria: `T009_VGPU_WMLESS_PRIMARY_MONITOR`; `T009_VGPU_WMLESS_MONITOR_FALLBACK`; `T009_VGPU_WMLESS_ROOT_FALLBACK`; `T009_VGPU_WMLESS_INVALID_ROOT_REFUSED`; `T009_VGPU_WMLESS_ROOT_ERROR_REFUSED`; `T009_VGPU_WMLESS_GEOMETRY_SOURCE`. Além deles, o reims-vgpu emite na linha always-on `host_window_mode` qual caminho rodou e de onde veio a geometria: `window_system=x11 wm=none fullscreen=override_redirect geometry_source=monitor position=+0,+0 size=1920x1080` (ou `geometry_source=x11_root` quando o fallback respondeu), contra `wm=external fullscreen=ewmh geometry_source=none` no caminho comum.
+Testes controlados: `tests/t009-single-app-session.py` (14 testes, `T009_CONTROLLED_TEST_PASS`), com `REIMS_HOST_ACTION_MODE=disabled` e fake `systemctl` primeiro no `PATH` (nunca chamado). Markers de sessão: `T009_X11_ENV`; `T009_DISPLAY_OVERRIDE`; `T009_XAUTHORITY_PRESERVED`; `T009_FULLSCREEN_CONTRACT`; `T009_HOST_WINDOW_CONTRACT`; `T009_VULKAN_CONTRACT`; `T009_WMLESS_X11_CONTRACT`; `T009_WAYLAND_ENV_CLEARED` e `T009_X11_NO_WAYLAND_ENV`; `T009_LAUNCHER_CHAIN`; `T009_EXIT_STATUS_PRESERVED`; `T009_NO_WM_DEPENDENCY`; `T009_NO_SYSTEMCTL`. Markers do seletor no companion: `T009_VGPU_X11_SELECTOR`; `T009_VGPU_X11_REQUIRES_DISPLAY`; `T009_VGPU_AUTO_COMPAT`. Markers Rust do caminho WM-less: `T009_VGPU_WMLESS_STRATEGY`; `T009_VGPU_WMLESS_GEOMETRY`; `T009_VGPU_WMLESS_X11_FULLSCREEN`; `T009_VGPU_WMLESS_FOCUS_POLICY`; `T009_VGPU_WMLESS_FOCUS_VERIFY`; `T009_VGPU_WMLESS_FOCUS_OBSERVABILITY`; `T009_VGPU_WMLESS_X11_FOCUS`. Markers Rust da política de geometria: `T009_VGPU_WMLESS_PRIMARY_MONITOR`; `T009_VGPU_WMLESS_MONITOR_FALLBACK`; `T009_VGPU_WMLESS_ROOT_FALLBACK`; `T009_VGPU_WMLESS_INVALID_ROOT_REFUSED`; `T009_VGPU_WMLESS_ROOT_ERROR_REFUSED`; `T009_VGPU_WMLESS_GEOMETRY_SOURCE`. Além deles, o reims-vgpu emite na linha always-on `host_window_mode` qual caminho rodou e de onde veio a geometria: `window_system=x11 wm=none fullscreen=override_redirect geometry_source=monitor position=+0,+0 size=1920x1080` (ou `geometry_source=x11_root` quando o fallback respondeu), contra `wm=external fullscreen=ewmh geometry_source=none` no caminho comum. No caminho WM-less, também emite `host_window_focus mechanism=x11_set_input_focus status=verified` somente depois de confirmar `XGetInputFocus`.
 
 ## Primeiro runtime real: falha de geometria e correção
 
@@ -106,9 +106,34 @@ Correção (reims-vgpu PR #5, commit `fix(window): fall back to X11 root geometr
 
 O runtime que falhou não foi descartado: a evidência ficou em `/tmp/reims-t009-xephyr-oY7L8A/` (`reims-vgpu-fail.delta.frozen.log`, `qemu.environ`, `xwininfo-*`) e em `/home/felipeab10/Documentos/reims-t009-runtime-oY7L8A/` (`result.json`, `lifecycle.log`). O encerramento dele classificou `EXTERNAL_SIGNAL`/`supervisor_signal` porque a janela de 1 pixel tornava o Apple menu inalcançável; isso não é defeito de T005–T008 e nada foi alterado por causa disso.
 
-### Validação real pendente
+## Segundo runtime real: geometria corrigida, foco/input ainda falhando
 
-O primeiro runtime provou o backend e o servidor, mas falhou na geometria. Com a correção acima, um novo runtime é necessário para provar a janela de verdade. `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
+O segundo runtime foi executado no mesmo Xephyr controlado (`:91`, root `1600x900`, sem window manager). A correção de geometria foi comprovada:
+
+```text
+host_window_mode window_system=x11 wm=none fullscreen=override_redirect
+geometry_source=x11_root position=+0,+0 size=1600x900
+Reims window: 1600x900, override_redirect=yes, map_state=IsViewable
+```
+
+Resultado: `T009_REAL_WMLESS_MODE=PASS`, `T009_REAL_FULLSCREEN_GEOMETRY=PASS` e `T009_REAL_OVERRIDE_REDIRECT=PASS`.
+
+O capture foi construído, mas não engajou:
+
+```text
+host_window_capture_mode mechanism=x11_grab_keyboard
+host_window_capture_engaged ausente
+USER_MOUSE_CONFIRMED=no
+USER_KEYBOARD_CONFIRMED=no
+```
+
+A causa é o monitor dummy do `winit` (`native_id() == 0`): no caminho `Fullscreen::Borderless`, o backend retorna antes de `set_fullscreen_hint(true)` e do `set_input_focus()` interno. Sem foco, `WindowEvent::Focused(true)` não chega, `Keyboard::focus(true)` não solicita `XGrabKeyboard` e o input não funciona. O encerramento manual da VM foi classificado como `QEMU_FATAL`/`qemu_exit_nonzero`; isso não motivou alterações em T005–T008.
+
+Correção follow-up: no caminho `X11 + fullscreen + WM-less`, depois de criar a janela e anexar o presenter, o Reims usa `XSetInputFocus` pela mesma conexão `Display*` dos raw handles Xlib da janela, confirma `IsViewable` com `XGetWindowAttributes` e valida o alvo com `XGetInputFocus`. A linha `host_window_focus ... status=verified` é emitida somente após essa confirmação. O caminho normal não solicita foco explícito, e `window.focus_window()`/EWMH não é usado.
+
+### Validação real pendente — runtime #3
+
+O runtime #1 provou o servidor, mas falhou na geometria; o runtime #2 provou a geometria, mas falhou no input. O runtime #3 deverá provar o foco confirmado e o capture engajado. `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
 2. **Servidor** — o `DISPLAY` atendido por um servidor Xorg/Xephyr controlado nesta sessão dedicada, explicitamente não pelo Xwayland do niri. A evidência é qual servidor atende o display, não o nome da variável.
