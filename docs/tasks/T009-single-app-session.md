@@ -214,6 +214,16 @@ externo: `QMP SHUTDOWN guest=true reason=guest-reset`, `qemu_exit_code=0` e
 classifica um terminal produzido pelo guest, sem marcadores Vulkan fatais, mas
 não substitui `guest-shutdown`; a distinção continua aberta para T009.
 
+Para separar estado persistente contaminado de regressão do hardening, a fixture
+limpa de `/home/felipeab10/Documentos/reims-t002-fixtures/runtime-sequoia-retry-2`
+foi clonada por reflink para um runtime isolado. `qemu-img check` não encontrou
+erros; a sessão atual apresentou o primeiro frame Vulkan e `guest_frame` via
+rail resident, mas o guest terminou novamente em `GUEST_REBOOT` antes de
+completar o banner SSH (`Connection timed out during banner exchange`). Não
+houve SIGSEGV, `VK_ERROR_DEVICE_LOST` ou pânico serial. A fixture original não
+foi escrita. Isso reforça que o bloqueio restante é a finalização/boot do guest,
+não uma falha Vulkan observada nesta implementação.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
