@@ -150,6 +150,36 @@ O cursor guest só chegava a `qemu_console_set_mouse`/`qemu_console_set_cursor`,
 
 Correção implementada depois do runtime #3: espelhamento latest-wins do cursor guest para a host-window usando `winit::window::CustomCursor`, sem composição Vulkan, sem warp da posição host e com eventos de cursor separados de `FramePublished`. `CursorUpdate` e `CursorGlyph` continuam sendo devolvidos intactos ao caminho QEMU-console. Foi adicionada observabilidade limitada do primeiro pointer move/button e das mudanças de cursor. O runtime #4 permanece pendente; T009 continua `[-]`.
 
+### Hardening pós-mortem do runtime #3
+
+O core do runtime #3 foi reaberto em modo somente leitura. A falha continua
+classificada como `SIGSEGV` em `write_staging_from_runs`, durante o
+`copy_nonoverlapping`: a origem estava no `memfd` da RAM do guest e o destino
+era o endereço usado pela escrita de staging persistente. A pressão de slab e
+as falhas de alocação Vulkan ocorreram no mesmo período, mas não constituem,
+sozinhas, prova de causa.
+
+Foi implementado um hardening seletivo no `reims-vgpu`:
+
+- os fallbacks que copiam `GuestRuns` agora usam slots de staging dedicados;
+- esses slots fazem `map/write/unmap` por escrita e não retêm ponteiro host;
+- o caminho comum de bytes mantém o slab persistente, para não ampliar a
+  regressão de desempenho além do caminho que apresentou o crash;
+- o recycle do fallback recusa slots slab persistentes já livres;
+- a métrica de alocação dedicada é separada como `staging_buffer`.
+
+Validação local: os cinco testes de `staging_mapping_tests` passaram, incluindo
+o teste de mistura entre slot persistente e snapshot CPU. A suíte da biblioteca
+teve 2249 testes aprovados e uma falha temporal preexistente em
+`runtime::drain::tests::the_drain_duty_census_separates_a_flush_tail_from_a_flush_mean`.
+A suíte completa do pacote ainda não compila os exemplos de host-window porque
+eles usam a assinatura anterior ao cursor do PR #5. O clippy global também
+continua bloqueado por avisos preexistentes fora desta mudança.
+
+O runtime #4 não reproduziu o crash, mas não alcançou shutdown natural. A task
+permanece `[-]` até uma validação live controlada confirmar estabilidade e
+finalização do lifecycle após este hardening.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
