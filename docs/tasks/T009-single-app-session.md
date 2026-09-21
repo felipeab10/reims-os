@@ -273,12 +273,13 @@ diagnóstico, mas não prova desktop, estabilidade completa ou shutdown natural.
 O artefato está em `/tmp/reims-t009-r18-96Qk9u/`; a cópia de estado usada foi
 `/home/felipeab10/Documentos/reims-t009-runtime-pause-candidate-reims-t009-r18-96Qk9u/`.
 
-### Runtime #20: fixture T002 autoritativa sob o build atual
+### Runtime #20: pacote de evidência T002 sob o build atual
 
-Foi feita uma nova cópia reflink somente leitura da fixture autoritativa de
+Foi feita uma nova cópia reflink do pacote de evidência de
 T002, `/home/felipeab10/Documentos/reims-t002-fixtures/runtime-sequoia-retry-2`.
-`qemu-img check` passou e a cópia contém o mesmo disco instalado usado pela
-evidência T002 (`ProductVersion 15.8`, SSH e autoboot documentados). Com o
+`qemu-img check` passou e a cópia vem do diretório onde a evidência T002
+documentou `ProductVersion 15.8`, SSH e autoboot. A auditoria posterior abaixo
+mostrou que esses discos foram modificados depois daquela prova. Com o
 QEMU/reims-vgpu atual do PR, Xephyr e a seleção explícita `Return` no OpenCore,
 o comportamento foi novamente: primeiro frame Vulkan, handoff ao XNU,
 nenhum login SSH e `QMP SHUTDOWN guest=true reason=guest-reset`.
@@ -370,8 +371,9 @@ Para testar essa diferença isoladamente, a fixture T002 foi copiada novamente
 e executada com o mesmo QEMU atual, Xephyr/X11 `1600x900`, `16G/8`,
 `QEMU_REBOOT_ACTION=reset` e o ROM GOP exato referenciado pelo runtime
 histórico (`/home/felipeab10/Documentos/REIMS macOS APPLIANCE/crates/reims-vgpu-efi/out/reims-vgpu-gop.rom`). O resultado foi o mesmo: primeiro frame,
-`EXITBS:END`, `HANDOFF TO XNU`, nenhum SSH ou desktop e três eventos QMP
-`RESET` do guest antes do encerramento externo (`EXTERNAL_SIGNAL`).
+`EXITBS:END`, `HANDOFF TO XNU`, nenhum SSH ou desktop e cinco eventos QMP
+`RESET` do guest, em intervalos de aproximadamente 25 segundos, antes do
+encerramento externo (`EXTERNAL_SIGNAL`).
 
 Logo, trocar o ROM GOP atual pelo artefato histórico não é suficiente para
 recuperar o desktop. O ROM permanece uma diferença de proveniência que impede
@@ -380,6 +382,23 @@ fixture T002 continua no caminho pós-XNU/QEMU.
 
 Artefatos: `/tmp/reims-t009-r29-exact-oldrom-xPRf7L/`; cópia isolada:
 `/home/felipeab10/Documentos/reims-t009-runtime-ab-exact-oldrom-r29-exact-oldrom/`.
+
+### Retificação: a fixture T002 não preserva o estado do desktop
+
+A evidência T002 continua válida: `desktop-reached.txt` registrou macOS 15.8 e
+SSH às 19:20 de 18/09/2026, seguido de shutdown solicitado pelo guest. Porém,
+os discos persistentes não foram congelados naquele ponto. A cronologia local
+mostra `OpenCore.qcow2` modificado às 23:11 e `macos.qcow2` às 23:12 do mesmo
+dia, durante rodadas posteriores de T003. Os seriais posteriores já registram
+o `Boot0080` inválido e repetições de `HANDOFF TO XNU` sem desktop.
+
+Assim, o diretório é autoritativo como **pacote de evidência**, mas não como
+imagem imutável do estado que chegou ao desktop. Os runtimes #20, #21, #26 e
+#29 reproduzem de forma consistente o estado posterior em reboot loop; eles
+não demonstram regressão do QEMU/Vulkan contra o disco bem-sucedido de 19:20,
+que não está preservado em snapshot interno nem em outra cópia local
+identificada. O bloqueador passa a ser a ausência de uma fixture instalada e
+congelada para validar desktop e shutdown natural no build atual.
 
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
