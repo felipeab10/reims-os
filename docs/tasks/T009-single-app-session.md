@@ -230,6 +230,31 @@ primeiro frame Vulkan, porta TCP aberta sem banner SSH completo e
 `GUEST_REBOOT`/`guest-reset` com exit 0. A hipótese de que o reboot fosse
 causado apenas pelo perfil `8G/4` fica, portanto, descartada.
 
+### Runtime #16: seleção explícita no OpenCore e handoff ao XNU
+
+As sondagens anteriores não distinguiam um timeout/reinício do menu OpenCore
+de uma falha do macOS. Em uma rodada controlada, após o primeiro frame, o
+harness enviou `Return` por XTest ao display `Xephyr :103`. O log confirmou a
+entrega da tecla (`keycode=36`, press/release), e a captura posterior deixou de
+mostrar o menu OpenCore: mostrou o boot verbose do macOS. O serial preservado
+também registrou `#[EB|LOG:HANDOFF TO XNU]`, sem `SIGSEGV`,
+`VK_ERROR_DEVICE_LOST` ou pânico serial.
+
+Esse resultado corrige a interpretação das sondagens da fixture: o estado
+marcado como instalado ainda apresentava o menu OpenCore com `1. OSX`, e a
+fixture T002 apresentava o fluxo de instalação/recuperação. Portanto,
+`GUEST_REBOOT` isolado nessas rodadas não prova que o macOS tenha falhado antes
+do boot; era necessário selecionar explicitamente o volume.
+
+Mesmo com a seleção correta, o runtime #16 terminou em
+`QMP SHUTDOWN guest=true reason=guest-reset`, com exit 0, antes de uma sessão
+SSH utilizável. A tentativa posterior de `shutdown -h now` recebeu conexão
+recusada porque o guest já havia reiniciado. A evidência atual estreita o
+bloqueio para a estabilidade do boot macOS após o handoff ao XNU; ainda não
+confirma desktop, shutdown natural ou conclusão de T009. Artefatos:
+`/tmp/reims-t009-r16-2W0d2q/` (`after-enter.png`, `result.json` e serial
+preservado).
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
