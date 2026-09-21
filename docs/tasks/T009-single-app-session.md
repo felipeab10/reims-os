@@ -292,6 +292,20 @@ histórico também não pode ser usado como prova de não regressão do build at
 Artefatos da repetição: `/tmp/reims-t009-r20-i7fElV/`; cópia isolada:
 `/home/felipeab10/Documentos/reims-t009-runtime-t002-candidate-reims-t009-r19-7P4V7x/`.
 
+### Runtime #21: reboot do QEMU preservado
+
+Para testar se `reboot=shutdown` era apenas um falso bloqueio de lifecycle, a
+mesma fixture T002 foi iniciada novamente com o build atual e
+`QEMU_REBOOT_ACTION=reset`. Após a seleção explícita no OpenCore, o QEMU
+permaneceu vivo por mais de dois minutos, mas o SSH continuou indisponível e
+nenhum desktop foi alcançado. A rodada foi encerrada externamente; seu
+resultado operacional foi `EXTERNAL_SIGNAL`, sem `SHUTDOWN guest=true`.
+
+Isso separa as duas conclusões: `reboot=shutdown` explica por que as rodadas
+anteriores terminavam e eram classificadas como `GUEST_REBOOT`, mas não é a
+causa suficiente da ausência de desktop. Com `reboot=reset`, o boot atual ainda
+fica preso após o handoff ao XNU. Artefatos: `/tmp/reims-t009-r21-tHXxfA/`.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
