@@ -364,6 +364,23 @@ ao desktop. A diferença de ROM/servidor explica por que o sucesso histórico
 não é uma prova de não regressão, mas ainda não identifica sozinha a causa do
 travamento pós-XNU.
 
+### Runtime #29: A/B com o ROM GOP histórico exato
+
+Para testar essa diferença isoladamente, a fixture T002 foi copiada novamente
+e executada com o mesmo QEMU atual, Xephyr/X11 `1600x900`, `16G/8`,
+`QEMU_REBOOT_ACTION=reset` e o ROM GOP exato referenciado pelo runtime
+histórico (`/home/felipeab10/Documentos/REIMS macOS APPLIANCE/crates/reims-vgpu-efi/out/reims-vgpu-gop.rom`). O resultado foi o mesmo: primeiro frame,
+`EXITBS:END`, `HANDOFF TO XNU`, nenhum SSH ou desktop e três eventos QMP
+`RESET` do guest antes do encerramento externo (`EXTERNAL_SIGNAL`).
+
+Logo, trocar o ROM GOP atual pelo artefato histórico não é suficiente para
+recuperar o desktop. O ROM permanece uma diferença de proveniência que impede
+comparações ingênuas com o runtime histórico, mas o bloqueio reproduzido na
+fixture T002 continua no caminho pós-XNU/QEMU.
+
+Artefatos: `/tmp/reims-t009-r29-exact-oldrom-xPRf7L/`; cópia isolada:
+`/home/felipeab10/Documentos/reims-t009-runtime-ab-exact-oldrom-r29-exact-oldrom/`.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
