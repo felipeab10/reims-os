@@ -306,6 +306,23 @@ anteriores terminavam e eram classificadas como `GUEST_REBOOT`, mas não é a
 causa suficiente da ausência de desktop. Com `reboot=reset`, o boot atual ainda
 fica preso após o handoff ao XNU. Artefatos: `/tmp/reims-t009-r21-tHXxfA/`.
 
+### A/B do staging: baseline `158888b`
+
+Para verificar se o hardening de `GuestRuns` era a causa do bloqueio, a revisão
+imediatamente anterior ao commit `ff076191` foi compilada em um worktree
+isolado, ligada a um QEMU separado e executada com a mesma fixture T002,
+Xephyr/X11, `1600x900`, OpenCore selecionado explicitamente e
+`QEMU_REBOOT_ACTION=reset`. O baseline apresentou o mesmo primeiro frame
+Vulkan e o mesmo `#[EB|LOG:HANDOFF TO XNU]`, mas não disponibilizou SSH durante
+a janela observada; a rodada também precisou ser encerrada externamente.
+
+Esse A/B não reproduz uma melhora com o staging antigo e elimina o hardening
+como causa suficiente do bloqueio atual. A alteração permanece válida para o
+SIGSEGV original do runtime #3, mas o problema de boot pós-XNU continua
+independente e deve ser investigado no caminho de host-window/X11 ou na
+interação gráfica do guest atual. Artefatos: `/tmp/r26-x35N2I/`; baseline:
+`158888b33c00fc2832260f6ecbf4ce9d169a7ea7`.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
