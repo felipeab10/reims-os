@@ -400,6 +400,25 @@ que não está preservado em snapshot interno nem em outra cópia local
 identificada. O bloqueador passa a ser a ausência de uma fixture instalada e
 congelada para validar desktop e shutdown natural no build atual.
 
+### Runtime #30: candidato instalado T001
+
+Como alternativa local, foi copiada por reflink a fixture T001 que documenta
+desktop, shutdown e reboot persistentes. Com o build atual, Xephyr/X11,
+`1600x900`, `16G/8` e autoboot `Boot0002`, a sessão chegou a `EXITBS:END` e
+`HANDOFF TO XNU`, mas não ofereceu SSH durante mais de seis minutos. Diferente
+do pacote T002 posterior, não houve `RESET` QMP nesse intervalo; também não foi
+emitido `first guest frame presented via rail resident`. A rodada foi encerrada
+externamente por `SIGINT` e o QEMU residual foi terminado explicitamente.
+
+Esse candidato evita o reboot loop da imagem T002 tardia, mas ainda não é uma
+fixture congelada no instante da prova: seu `macos.qcow2` foi modificado às
+14:12, depois das evidências de desktop e persistência registradas entre 14:02
+e 14:08. Portanto, ele também não permite atribuir a ausência de desktop ao
+build atual sem um A/B adicional com o QEMU histórico exato.
+
+Artefatos: `/tmp/reims-t009-r30b-t001-ZwWWgR/`; cópia isolada:
+`/home/felipeab10/Documentos/reims-t009-runtime-t001-candidate-r30-t001/`.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
