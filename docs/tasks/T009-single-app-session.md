@@ -148,7 +148,7 @@ classification_reason=qemu_runtime_segfault
 
 O cursor guest só chegava a `qemu_console_set_mouse`/`qemu_console_set_cursor`, enquanto a janela real usa `winit/Vulkan` com `-display none`; não havia consumidor de posição, glyph ou visibilidade na host-window. O transporte `CursorMoved → InputPointerMove → usb-tablet` ficou não provado por falta de observabilidade. O core mostrou `SIGSEGV` em `write_staging_from_runs → stage_buffer_content`, após falhas `vk_slab_allocate_memory` e pressão de registry/slab; isso não foi atribuído ao mouse.
 
-Correção implementada depois do runtime #3: espelhamento latest-wins do cursor guest para a host-window usando `winit::window::CustomCursor`, sem composição Vulkan, sem warp da posição host e com eventos de cursor separados de `FramePublished`. `CursorUpdate` e `CursorGlyph` continuam sendo devolvidos intactos ao caminho QEMU-console. Foi adicionada observabilidade limitada do primeiro pointer move/button e das mudanças de cursor. O runtime #4 permanece pendente; T009 continua `[-]`.
+Correção implementada depois do runtime #3: espelhamento latest-wins do cursor guest para a host-window usando `winit::window::CustomCursor`, sem composição Vulkan, sem warp da posição host e com eventos de cursor separados de `FramePublished`. `CursorUpdate` e `CursorGlyph` continuam sendo devolvidos intactos ao caminho QEMU-console. Foi adicionada observabilidade limitada do primeiro pointer move/button e das mudanças de cursor. O runtime #4 confirmou o caminho end-to-end de geometria, foco, capture, cursor, movimento e clique; T009 continua `[-]` enquanto a finalização natural ainda não é reproduzida.
 
 ### Hardening pós-mortem do runtime #3
 
@@ -172,13 +172,41 @@ Validação local: os cinco testes de `staging_mapping_tests` passaram, incluind
 o teste de mistura entre slot persistente e snapshot CPU. A suíte da biblioteca
 teve 2249 testes aprovados e uma falha temporal preexistente em
 `runtime::drain::tests::the_drain_duty_census_separates_a_flush_tail_from_a_flush_mean`.
-A suíte completa do pacote ainda não compila os exemplos de host-window porque
-eles usam a assinatura anterior ao cursor do PR #5. O clippy global também
-continua bloqueado por avisos preexistentes fora desta mudança.
+Os exemplos de host-window foram atualizados para a assinatura atual do cursor;
+`cargo test --no-run` do pacote passou. O clippy estrito continua bloqueado por
+avisos preexistentes fora desta mudança; com esses avisos explicitamente
+permitidos, o clippy do alvo modificado passa.
 
 O runtime #4 não reproduziu o crash, mas não alcançou shutdown natural. A task
 permanece `[-]` até uma validação live controlada confirmar estabilidade e
 finalização do lifecycle após este hardening.
+
+### Runtime #5: estabilidade Vulkan/QEMU após o hardening
+
+Foi executada uma rodada live controlada em `Xephyr :92`, root `1600x900`, sem
+window manager, usando a sessão dedicada, Vulkan e o estado instalado já
+validado. O QEMU foi identificado pelo supervisor, o QMP ficou disponível e o
+primeiro frame foi apresentado como `1600x900` com três drawables. A janela
+observada foi `Reims vGPU`, `1600x900+0+0`, ocupando o root do Xephyr.
+
+Durante aproximadamente três minutos de execução, não houve
+`VK_ERROR_DEVICE_LOST`, `SIGSEGV`, abort, assertion ou pânico serial. O
+resultado foi encerrado pelo timeout controlado para não deixar a VM indefinida:
+
+```text
+host_window_mode ... wm=none fullscreen=override_redirect
+reims-vgpu-window: first frame presented (1600x900, 3 drawables)
+QMP: available=true, SHUTDOWN reason=host-signal, guest=false
+classification=EXTERNAL_SIGNAL
+recovery_required=false
+```
+
+A evidência completa está em `/tmp/reims-t009-r5-AnZvyL/`, incluindo
+`result.json`, `lifecycle.log`, `qemu.log` e `serial.log`. O encerramento do
+supervisor deixou o processo QEMU filho como zumbi até a limpeza explícita do
+harness; não houve processo QEMU/Xephyr ativo após a limpeza. Esta rodada
+confirma estabilidade Vulkan/QEMU dentro da janela observada, mas não confirma
+shutdown natural do guest; por isso T009 continua `[-]`.
 
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
