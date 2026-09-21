@@ -491,6 +491,38 @@ Artefatos:
 - `9f93935`: `/tmp/reims-t009-r36-9f93935-gsFeQD/`;
 - correção `cc3a6f3`: `/tmp/reims-t009-r37-cursor-unblocked-pFEsj7/`.
 
+### Runtime #39: staging transitório corrigido, reset pós-XNU ainda aberto
+
+O pós-mortem do runtime #3 encontrou uma segunda falha no hardening: os slots
+dedicados de snapshot eram mapeados para a escrita, mas não eram desmapeados
+antes de voltar ao pool. A segunda reutilização do mesmo `VkDeviceMemory`
+tentava mapear uma alocação ainda marcada pelo driver como mapeada. A correção
+`33ba39d` passa a devolver junto do ponteiro se o mapeamento foi transitório e
+faz `vkUnmapMemory` exatamente ao fim das três escritas (`bytes`, `swap_rb` e
+`GuestRuns`). O teste de staging agora recicla o mesmo snapshot, escreve uma
+segunda vez e confirma a sequência map/write/unmap.
+
+O QEMU foi recompilado com essa revisão e executado contra uma cópia fresca de
+T001, ROM histórico, Xephyr `:106`/`1920x1080`, X11 WM-less, `16G/8` e
+`QEMU_REBOOT_ACTION=reset`. O resultado separa claramente as duas partes:
+
+- `first frame presented (1920x1080, 3 drawables)`;
+- `first guest frame presented via rail resident (same-device zero-copy)`;
+- nenhum `SIGSEGV`, `VK_ERROR_DEVICE_LOST`, abort ou pânico serial;
+- depois do handoff ao XNU, o QMP registrou `RESET guest=true reason=guest-reset`
+  aproximadamente a cada 65 segundos, repetindo `EFI GOP → EXITBS:END →
+  HANDOFF TO XNU` no serial;
+- a rodada foi encerrada externamente e classificada como
+  `EXTERNAL_SIGNAL`, sem shutdown natural.
+
+Assim, o unmap corrigido elimina a falha de mapeamento identificada no código
+e permite publicar o primeiro frame, mas não resolve o reset pós-XNU. T009
+continua `[-]`; o próximo diagnóstico deve comparar o caminho pós-frame/guest
+watchdog, sem atribuir o reset ao staging na ausência de evidência Vulkan.
+
+Artefatos: `/tmp/reims-t009-r39-staging-unmap-u2KFoO/`, especialmente
+`logs/boot-20260921-191733-1b7e075f/{qemu.log,serial.log,lifecycle.log,result.json}`.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
