@@ -255,6 +255,24 @@ confirma desktop, shutdown natural ou conclusão de T009. Artefatos:
 `/tmp/reims-t009-r16-2W0d2q/` (`after-enter.png`, `result.json` e serial
 preservado).
 
+### Runtime #18: modo pause para preservar o ponto pós-XNU
+
+Para distinguir um reboot do guest de um encerramento imposto por
+`-action reboot=shutdown`, foi repetida a sondagem com
+`QEMU_REBOOT_ACTION=pause`, em uma cópia isolada do estado instalado, com
+`16G/8` (o perfil histórico da fixture). Após o primeiro frame, o mesmo
+`Return` foi entregue ao OpenCore por XTest. O QEMU permaneceu vivo por mais
+de 25 segundos, e a captura continuou mostrando o boot verbose do macOS; não
+houve evento terminal QMP nesse intervalo.
+
+Nesse estado o monitor QMP não respondeu à consulta `query-status`, e a rodada
+foi encerrada externamente para liberar os recursos. O resultado final foi,
+corretamente, `EXTERNAL_SIGNAL`, não `GUEST_SHUTDOWN` nem `GUEST_REBOOT`. A
+rodada é evidência de que o caminho consegue preservar o ponto pós-XNU para
+diagnóstico, mas não prova desktop, estabilidade completa ou shutdown natural.
+O artefato está em `/tmp/reims-t009-r18-96Qk9u/`; a cópia de estado usada foi
+`/home/felipeab10/Documentos/reims-t009-runtime-pause-candidate-reims-t009-r18-96Qk9u/`.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
