@@ -448,6 +448,49 @@ Artefatos:
 - QEMU atual + ROM histórico: `/tmp/reims-t009-r32-current-qemu-oldrom-spJ2pM/`;
 - pré-hardening `158888b`: `/tmp/reims-t009-r33b-prehardening-avm7DC/`.
 
+### Runtimes #34–#37: bisect do cursor e correção parcial
+
+O intervalo de regressão foi dividido com QEMUs separados, todos ligados à
+staticlib da revisão correspondente e executados contra cópias frescas do
+candidato T001 e o mesmo ROM histórico. `5199beb` (seleção X11), `2615dd8`
+(fullscreen/geometria WM-less) e `9f93935` (foco WM-less) chegaram ao serviço
+SSH. O commit seguinte, `a8bda71` (espelhamento do cursor), é o primeiro que
+reproduz a perda dessa progressão. Essa classificação é limitada ao progresso
+do boot/serviço: os braços bons do bisect não provaram desktop gráfico.
+
+A revisão mostrou que `device_pop_action`, executado no BH do main loop do
+QEMU, passou a adquirir `slot.window`, o mesmo lock mantido pela publicação de
+frames durante consulta/cópia do residente Vulkan. Assim, uma atualização
+cosmética de cursor podia bloquear a entrega das demais ações do guest. A
+correção `cc3a6f3` move o slot e o wake do cursor para o dispositivo, fora do
+lock de frame/Vulkan. Um teste de regressão mantém `slot.window` adquirido e
+confirma que `CursorUpdate` ainda é entregue e espelhado.
+
+O runtime #37 recompilou o QEMU atual com essa correção e repetiu o A/B com
+cópia fresca de T001, ROM histórico, Xephyr `1600x900`, `16G/8` e
+`QEMU_REBOOT_ACTION=reset`. O guest chegou brevemente ao handshake do sshd e
+permaneceu mais de quatro minutos sem `RESET` QMP nem panic, eliminando o
+reboot loop observado no braço ruim. Porém, a janela ficou no verbose boot, não
+houve `first guest frame presented via rail resident`, e tentativas posteriores
+de SSH pararam no banner. O encerramento externo produziu o evento QMP
+`SHUTDOWN guest=false reason=host-signal`, mas o processo não terminou após
+SIGINT/SIGTERM e precisou de SIGKILL. Portanto a correção resolve a contenção
+introduzida pelo cursor, mas não fecha T009: ainda faltam o primeiro frame real,
+desktop estável e shutdown natural.
+
+Validação local da correção: QEMU x86_64/Vulkan recompilado com sucesso; teste
+novo passou; suíte serial `2250 passed, 1 ignored`, com apenas o flaky já
+conhecido `the_drain_duty_census_separates_a_flush_tail_from_a_flush_mean`.
+O lint estrito continua barrado somente pelos quatro avisos baseline de
+`chunks_exact_to_as_chunks` em `reims-vgpu-observe`.
+
+Artefatos:
+
+- `5199beb`: `/tmp/reims-t009-r34-5199-9Ie60p/`;
+- `2615dd8`: `/tmp/reims-t009-r35-2615-rqWOzL/`;
+- `9f93935`: `/tmp/reims-t009-r36-9f93935-gsFeQD/`;
+- correção `cc3a6f3`: `/tmp/reims-t009-r37-cursor-unblocked-pFEsj7/`.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
