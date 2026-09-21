@@ -523,6 +523,34 @@ watchdog, sem atribuir o reset ao staging na ausência de evidência Vulkan.
 Artefatos: `/tmp/reims-t009-r39-staging-unmap-u2KFoO/`, especialmente
 `logs/boot-20260921-191733-1b7e075f/{qemu.log,serial.log,lifecycle.log,result.json}`.
 
+### Runtime #40: pausa pós-XNU sem reset observável
+
+Foi feita uma sondagem somente diagnóstica em uma cópia reflink separada da
+fixture #39, com `QEMU_REBOOT_ACTION=pause`, Xephyr `:107`, `16G/8` e trace
+QEMU filtrado para `kvm_reset_vmfd`. O trace precisou ser reduzido a um evento:
+o filtro combinado inicialmente foi rejeitado pelo QEMU por interpretar
+`uefi_hard_reset` como opção booleana, e essa tentativa não chegou a criar uma
+VM.
+
+Na tentativa válida, o serial registrou um único ciclo completo de GOP,
+`EXITBS:END` e `HANDOFF TO XNU`. Durante 105 segundos:
+
+- o QMP permaneceu disponível, sem `RESET` ou `SHUTDOWN guest=true`;
+- não houve `kvm_reset_vmfd`, panic serial ou erro Vulkan;
+- a janela publicou apenas `first frame presented`, sem
+  `first guest frame presented via rail resident`.
+
+O supervisor foi interrompido pelo timeout controlado e classificou a sessão
+como `EXTERNAL_SIGNAL`; o QEMU encerrou limpo após o sinal. A rodada não prova
+estabilidade do desktop, mas preserva uma distinção útil: o reset observado em
+`reset` não é reproduzido deterministically em `pause`, enquanto a publicação
+do frame do convidado também não é determinística. Não há base para alterar o
+guest-reset, o supervisor ou o caminho Vulkan sem uma captura que contenha o
+evento causal.
+
+Artefatos: `/tmp/reims-t009-r40b-trace/` e
+`/home/felipeab10/Documentos/reims-t009-runtime-t001-r40-pause-trace/vms/reims-57f0fd6b61a74542/run-r40b/`.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
