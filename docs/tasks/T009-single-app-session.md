@@ -347,6 +347,23 @@ concluída e não é seguro avançar para merge.
 Artefatos: `/tmp/reims-t009-r27-v5lzwn/`; cópia isolada:
 `/home/felipeab10/Documentos/reims-t009-runtime-r4-candidate-reims-t009-r27-v5lzwn/`.
 
+### Auditoria de procedência pós-runtime #27
+
+A comparação binária confirmou que o `OVMF_CODE.fd` e o `OVMF_VARS.fd` são
+idênticos entre a cópia do runtime #4 e a fixture T002. Os discos, porém, não
+são o mesmo estado: `macos.qcow2` diverge no offset `209735680` e
+`OpenCore.qcow2` no offset `1208320`. Isso impede tratar o replay do runtime #4
+como uma repetição da fixture autoritativa.
+
+Também foi confirmado que a sessão histórica que chegou ao desktop usava um
+ROM GOP antigo (`5544adcc...`), Wayland e o checkout
+`reims-macos-appliance-runtime`; o build atual usa outro ROM (`45b34a61...`) e
+X11/Xephyr. As repetições #20, #21 e o A/B do baseline, contudo, já usaram a
+fixture T002 e o build atual, chegaram ao mesmo handoff ao XNU e não chegaram
+ao desktop. A diferença de ROM/servidor explica por que o sucesso histórico
+não é uma prova de não regressão, mas ainda não identifica sozinha a causa do
+travamento pós-XNU.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
