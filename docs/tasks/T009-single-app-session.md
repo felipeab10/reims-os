@@ -871,3 +871,17 @@ imagem corrigir, a falha está no residente ou na transferência residente→jan
 se permanecer igual, a origem está antes desse ponto, no frame CPU/writeback.
 O teste Vulkan/X11 do presenter passou (6 testes); a validação live ainda está
 pendente.
+
+### A/B runtime #54 — caminho CPU forçado não produz imagem
+
+O build de `8e620f3a2a` foi executado com
+`REIMS_VGPU_WINDOW_FORCE_CPU=on`, mantendo o restante do perfil seguro. A
+captura `/tmp/reims-t009-force-cpu-current.png` mostrou apenas o slate escuro:
+o Setup Assistant não apareceu. O runtime publicou alguns frames iniciais, mas
+depois permaneceu em `same_key` com o caminho CPU forçado, sem recuperar uma
+imagem completa. Esse resultado elimina o fallback CPU como correção direta e
+confirma que o próximo diagnóstico deve preservar o residente Vulkan e
+investigar como seus pixels são escritos/transferidos antes da publicação.
+
+O runtime foi encerrado após a captura; os discos não foram alterados nem
+destruídos.
