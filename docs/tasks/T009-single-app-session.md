@@ -802,3 +802,17 @@ multisampling incompatível esteja sendo aceito no primeiro bind fica, portanto,
 sem evidência neste cenário. A instrumentação permanece no PR #5 para capturar
 o caso se ele surgir em outro ciclo; a causa dos glitches segue aberta no nível
 de produção/consumo de conteúdo já válido ou no caminho Vulkan/QEMU posterior.
+
+### A/B runtime #51 — importação direta do guest não é a correção
+
+O braço repetiu a fixture limpa com a única mudança
+`REIMS_VGPU_GUEST_IMPORT=on`. O guest chegou ao handoff do XNU, mas não
+publicou o frame residente antes do timeout; o log Vulkan registrou
+`vulkan_guest_reset resident=2 sampled=1 context=1` em `t=115361`, seguido de
+`device_reset`. A tela permaneceu no logo da Apple após o reboot, como observado
+na VM.
+
+Esse resultado descarta a importação direta como solução dos glitches e mostra
+que ela ainda piora a estabilidade do caminho atual. O perfil de trabalho volta
+a ser `REIMS_VGPU_GUEST_IMPORT=off`; não houve alteração de código nem de disco
+neste A/B.
