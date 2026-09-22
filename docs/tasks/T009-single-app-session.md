@@ -998,3 +998,19 @@ textura como causa primária. O próximo alvo é o conteúdo produzido dentro do
 fragmento/pipeline ou os dados de textura que já chegam válidos ao shader. Os
 probes foram publicados no PR #5, continuam desligados por padrão, e não houve
 patch de produção nem alteração destrutiva dos discos. T009 continua `[-]`.
+
+### Runtime #61 — A/B de blend por substituição opaca
+
+Foi adicionado o probe diagnóstico `REIMS_VGPU_BLEND_REPLACE_PROBE=on`, que
+remove temporariamente o estado de blend dos pipelines para comparar a mesma
+tela com escrita opaca. O runtime manteve `REIMS_VGPU_GUEST_IMPORT=off`,
+`REIMS_VGPU_SAMPLED_IDENTITY=off`, `GUEST_MEMORY=false` e
+`reims-vgpu-pci`. A captura `/tmp/reims-t009-blend-replace.png` mostrou que a
+substituição opaca piora claramente a composição: surgem retângulos pretos
+atrás do ícone, título e lista, enquanto a corrupção do scrollbar e dos botões
+inferiores permanece.
+
+Isso confirma que o blend é necessário para a composição normal, mas não é a
+correção do glitch. O probe fica desligado por padrão e não há patch de
+produção justificado por este A/B. O runtime foi encerrado após a captura, sem
+reset, merge ou alteração destrutiva dos discos. T009 continua `[-]`.
