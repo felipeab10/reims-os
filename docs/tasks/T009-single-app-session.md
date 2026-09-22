@@ -1318,3 +1318,8 @@ compatível de um opcode desconhecido ou de um payload truncado. Ainda não há
 execução desses comandos: o plugin PCI do guest não os emite enquanto
 `supportsOpenGL` responder falso, e o host não deve declarar a capacidade antes
 de existir um executor validado.
+
+A tabela agora fica no decoder de renderização, que é o proprietário da
+classificação de registros ainda sem interpretação. A compilação Linux/Vulkan
+passou após essa reorganização. O teste de VM continua pendente porque falta a
+personalidade do guest que emite esses opcodes.
