@@ -1368,10 +1368,9 @@ encerra a inicialização antes de criar a command queue se
 `supportsEitherGPUFamily(Apple1, Mac2)` for falso. O dispositivo do guest
 falha exatamente nas duas alternativas observadas. Isso é uma condição
 concreta de falha **se** o Chrome tentar inicializar esse backend ANGLE Metal;
-ainda não prova que explique o estado atual do Chrome nem um defeito de
-apresentação Vulkan no host. A inferência precisa ser confirmada contra a
-revisão ANGLE embutida no Chrome 153; o código upstream consultado não prova
-sozinho que a revisão do Chrome contém a mesma condição.
+naquele momento ainda não provava que explicasse o estado atual do Chrome nem
+um defeito de apresentação Vulkan no host. A revisão exata do ANGLE embutido no
+Chrome 153 e a escolha de backend foram confirmadas depois; veja Runtime #77.
 
 Não vamos forçar `Mac2`/`Apple1` como suportados nem desabilitar o requisito às
 cegas: isso anunciaria capacidades não implementadas e poderia trocar uma
@@ -1389,7 +1388,42 @@ ANGLE, mas pode nem estar sendo alcançada pelo Chrome. A capacidade observada d
 dispositivo continua sendo real e útil, porém não explica sozinha o fallback.
 
 O processo principal não publica uma porta DevTools remota, e os logs do
-Unified Logging não forneceram motivo de seleção do backend. Próximo passo
-seguro: obter o relatório completo `chrome://gpu` (feature status, problemas e
-command line) e correlacioná-lo ao motivo de GL desativado, sem reiniciar o
-Chrome/VM nem mexer nos discos. A sessão e o estado do guest permanecem ativos.
+Unified Logging não forneceram motivo de seleção do backend. A fonte da versão
+instalada foi então conferida diretamente; veja o Runtime #77 abaixo. Ainda
+será útil obter a seção de problemas/logs do `chrome://gpu` para correlacionar
+o erro EGL exato, sem reiniciar Chrome/VM nem mexer nos discos.
+
+### Runtime #77 — Regressão de seleção do backend no Chromium 153
+
+Foi possível ligar o binário do guest à fonte oficial exata, não apenas ao
+`main`: a [tag Chromium `153.0.8010.53`](https://chromium.googlesource.com/chromium/src/+/792bf6722e73a45aa9e47c163b9901bdc17f3230/DEPS) fixa o ANGLE em
+[`ed04c8113c6538f3e1264042da8cb4afd100369b`](https://chromium.googlesource.com/angle/angle/+/ed04c8113c6538f3e1264042da8cb4afd100369b/src/libANGLE/renderer/metal/DisplayMtl.mm), igual ao prefixo `ed04c811c65` exibido no `chrome://gpu` do guest. A revisão Chromium
+[`75824eea71c08963a0746898c04c93e149ebca3b`](https://chromium.googlesource.com/chromium/src/+/75824eea71c08963a0746898c04c93e149ebca3b%5E%21/), presente nessa linha de versão,
+remove `gl::ANGLEImplementation::kOpenGL` da lista de backends permitidos no
+macOS; sobram Metal e SwiftShader. A mensagem do commit é “Disallow Angle/CGL
+backend on mac”.
+
+Na revisão ANGLE que o Chrome 153 realmente inclui,
+`DisplayMtl::initializeImpl` exige `requireGpuFamily2` e retorna falha se o
+dispositivo não suporta Apple GPU Family 1 **nem** Mac GPU Family 2. A condição
+está ativa por padrão. Nosso probe no guest mediu `Apple1=false` e `Mac2=false`;
+o processo GPU ativo termina em `--use-gl=disabled`. A correlação entre versão,
+backend removido, requisito Metal e capability reportada torna esta a explicação
+mais forte até agora para a aceleração GL/WebGL ausente no Chrome 153. O log EGL
+direto ainda não foi capturado, então não afirmamos ter observado a mensagem de
+falha no processo Chrome.
+
+Isso muda a fronteira de implementação: uma camada EGL/Metal **no host Linux**
+não recoloca o backend CGL na lista de Chromium do guest, nem torna verdadeiro
+`MTLDevice.supportsFamily(Mac2)`. O caminho do Reims recebe comandos Metal do
+guest e os executa via Vulkan; ele não controla sozinho a política de seleção
+ANGLE nem a resposta do driver Apple no guest. A inspeção do contrato local
+reforça a cautela: a tabela atual possui uma família Metal única (key 37, valor
+`Apple9`) e, para guests mais novos, um conjunto de famílias Apple 5–11 (key
+44); não há bit explícito `Mac2` para o guest macOS 15.8. Não devemos
+reinterpretar key 37 como `Mac2` sem provar como o parser do guest usa esse
+campo, nem anunciar suporte sem implementar e validar as operações exigidas.
+Próximo passo é rastrear o parser PCI/Metal do guest e confirmar se há um canal
+de capability apropriado; se não houver, o conserto de browser exigirá um
+ANGLE/Chromium com fallback compatível, não uma camada EGL no host Linux. Não
+houve benchmark, reinício ou escrita em disco persistente; a VM permanece ativa.
