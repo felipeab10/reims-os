@@ -903,3 +903,20 @@ move o próximo diagnóstico para a escrita, sincronização ou formato do
 residente antes do presenter.
 
 O runtime foi encerrado após a captura, sem alteração destrutiva dos discos.
+
+### A/B runtime #56 — identidade de amostra não corrige o frame
+
+Foi repetida a mesma fixture com `REIMS_VGPU_GUEST_IMPORT=off`, mas com
+`REIMS_VGPU_SAMPLED_IDENTITY=on` em vez do perfil seguro `off`. A captura
+`/tmp/reims-t009-sampled-identity-on-0810.png` perdeu a lista inteira do Setup
+Assistant, enquanto a corrupção dos botões inferiores permaneceu. Portanto o
+cache de amostras por identidade não é uma correção; no perfil T009 ele deve
+continuar desligado. O runtime foi encerrado após a captura, sem reset Vulkan
+ou alteração destrutiva dos discos.
+
+Também foi testado, apenas em modo diagnóstico e depois removido, forçar
+re-sementeação de alvos GVA a partir da memória do guest. A faixa corrompida
+aumentou e a barra/botões continuaram defeituosos. Isso descarta a falta de
+semente GVA como explicação suficiente para esta tela. A evidência acumulada
+agora localiza o defeito antes da apresentação, no conteúdo produzido por
+draws/targets válidos; não há patch de produção justificado ainda.
