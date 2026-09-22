@@ -945,3 +945,33 @@ sendo apenas um controle do QEMU, pois não executa esse produtor Vulkan.
 
 Os dois runtimes foram encerrados após as capturas, sem merge, sem alteração
 destrutiva dos discos e sem alteração de código. T009 continua `[-]`.
+
+### Runtime #59 — probe de conteúdo antes/depois do draw parcial
+
+Foi adicionado ao PR #5 o probe diagnóstico `REIMS_VGPU_TARGET_CONTENT_PROBE=on`.
+Ele permanece desligado por padrão e, somente para draws parciais que declaram
+preservação, lê o residente antes do draw, força um readback depois e compara os
+pixels fora do scissor após normalizar a ordem BGRA/RGBA. O build Vulkan/QEMU foi
+reconstruído e executado na fixture limpa com `REIMS_VGPU_GUEST_IMPORT=off`,
+`REIMS_VGPU_SAMPLED_IDENTITY=off`, `GUEST_MEMORY=false` e
+`reims-vgpu-pci`; a janela X11 foi capturada em
+`/tmp/reims-t009-target-probe-final.png`. Serial:
+`components/reims-vgpu/vm/disks/run/serial-20260922-083719.log`.
+
+As amostras registraram, entre outras, as seguintes linhas:
+
+```text
+target_content_probe ... size=848x897 scissor=0,0,45,44 ... changed_outside=0 changed_inside=552
+target_content_probe ... size=1920x1080 scissor=918,310,84,84 ... changed_outside=0 changed_inside=7056
+target_content_probe ... size=846x895 scissor=0,0,57,68 ... changed_outside=0 changed_inside=3368
+```
+
+O resultado é importante: o conteúdo fora da região escrita permanece idêntico
+no residente antes/depois, enquanto a captura visual ainda mostra a corrupção
+na interface. Isso reduz fortemente a hipótese de perda do LOAD, limpeza do
+alvo ou sincronização que destrói a área preservada. O próximo alvo causal é a
+produção dentro do scissor — coordenadas viewport/scissor, shader, blend ou
+formato — e não o presenter X11/QEMU nem a preservação do frame anterior.
+O probe foi mantido apenas como instrumentação no PR #5; não há patch de
+produção justificado por este runtime. A VM foi encerrada após a captura e os
+discos foram preservados. T009 continua `[-]`.
