@@ -1427,3 +1427,22 @@ Próximo passo é rastrear o parser PCI/Metal do guest e confirmar se há um can
 de capability apropriado; se não houver, o conserto de browser exigirá um
 ANGLE/Chromium com fallback compatível, não uma camada EGL no host Linux. Não
 houve benchmark, reinício ou escrita em disco persistente; a VM permanece ativa.
+
+### Runtime #78 — Feature set antigo confirma a lacuna Mac2
+
+O probe JXA reutilizável agora consulta também `supportsFeatureSet:`. No mesmo
+`Apple Paravirtual device`, o guest responde `true` para
+`macOS_GPUFamily1_v1` até `_v4` e `false` para `macOS_GPUFamily2_v1`, além de
+`supportsFamily(Mac2)=false`. Isso distingue o rótulo geral
+`Metal Support: Metal 2` do `system_profiler` da feature set específica que o
+ANGLE exige: o rótulo não é prova de `Mac GPU Family 2`. A [documentação da
+Apple para `MTLGPUFamily`](https://developer.apple.com/documentation/metal/mtlgpufamily?language=objc)
+trata `supportsFamily:` e `supportsFeatureSet:` como verificações distintas e
+marca a segunda API/enum como legada/depreciada. O resultado é só leitura e
+não altera capabilities.
+
+O probe completo voltou a executar via `osascript` no guest sem Python,
+Command Line Tools ou reinício. O Chrome e o QEMU seguem ativos; nenhum teste
+de FPS foi iniciado. Os próximos trabalhos continuam no limite do contrato de
+famílias e da compatibilidade do browser, não na instrumentação de pacing do
+host.
