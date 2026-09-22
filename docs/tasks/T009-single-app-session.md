@@ -975,3 +975,26 @@ formato — e não o presenter X11/QEMU nem a preservação do frame anterior.
 O probe foi mantido apenas como instrumentação no PR #5; não há patch de
 produção justificado por este runtime. A VM foi encerrada após a captura e os
 discos foram preservados. T009 continua `[-]`.
+
+### Runtime #60 — geometria parcial e auditoria de texturas
+
+O probe foi estendido com `geometry_probe`, condicionado ao mesmo
+`REIMS_VGPU_TARGET_CONTENT_PROBE=on`, para registrar a geometria efetivamente
+enviada a `vkCmdSetViewport`/`vkCmdSetScissor` nos draws parciais. As amostras
+mostraram a transformação esperada: viewport full-target com Y invertido e
+scissors dentro do alvo, por exemplo `848x898` com scissor `0,0,43,42` e
+`1920x1080` com scissor `918,310,84,84`. Não houve retângulo negativo,
+overflow ou deslocamento incompatível com o alvo.
+
+Como controle separado, o runtime também usou
+`REIMS_VGPU_GATHER_AUDIT_ALL=on`, mantendo `REIMS_VGPU_GUEST_IMPORT=off`. O
+serial `components/reims-vgpu/vm/disks/run/serial-20260922-084720.log` registrou
+auditorias `gw_audit_ok` e nenhuma falha de gather, mismatch de residente ou
+recusa de textura amostrada. A captura continuou visualmente com o padrão de
+corrupção nos elementos da interface.
+
+Esse runtime reduz a hipótese de geometria viewport/scissor e de cópia RAM→
+textura como causa primária. O próximo alvo é o conteúdo produzido dentro do
+fragmento/pipeline ou os dados de textura que já chegam válidos ao shader. Os
+probes foram publicados no PR #5, continuam desligados por padrão, e não houve
+patch de produção nem alteração destrutiva dos discos. T009 continua `[-]`.
