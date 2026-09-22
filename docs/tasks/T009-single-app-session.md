@@ -891,3 +891,15 @@ Como próximo experimento isolado, o PR #5 também recebeu
 residente, mas troca `vkCmdBlitImage` por `vkCmdCopyImage`, removendo filtro e
 transformação de viewport da apresentação. Os 6 testes do presenter passaram;
 o A/B visual ainda precisa ser executado.
+
+### A/B runtime #55 — cópia direta não altera o glitch
+
+Com `REIMS_VGPU_WINDOW_FORCE_COPY=on`, a VM chegou ao mesmo Setup Assistant e
+produziu a mesma corrupção estável na barra de rolagem e nos botões inferiores.
+O caminho trocou o blit filtrado pela cópia direta 1:1, mas a captura
+`/tmp/reims-t009-force-copy-20260922-0756.png` permaneceu visualmente igual ao
+baseline. Isso elimina o filtro/viewport da apresentação como causa primária e
+move o próximo diagnóstico para a escrita, sincronização ou formato do
+residente antes do presenter.
+
+O runtime foi encerrado após a captura, sem alteração destrutiva dos discos.
