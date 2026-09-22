@@ -1065,3 +1065,29 @@ entre o alvo GVA sem conteúdo pronto, o seed CPU e a primeira renderização; n
 há evidência para ativar a ampliação em produção ainda. O runtime terminou por
 timeout, com `device_lost=0`, sem panic/reset e sem alteração destrutiva dos
 discos. T009 continua `[-]`.
+
+### Runtime #64 — GVA Store/readback e comparação de ordem de bytes
+
+O PR #5 recebeu primeiro uma normalização de ordem no caminho de GVA Store
+(`4f6b8723cf`), porque o readback Vulkan carregava a indicação física
+`pixels_bgra` separadamente dos bytes. O build Vulkan passou, mas a primeira
+materialização parcial de 64×64 continuou alterando pixels fora do scissor.
+Como controle, o probe foi ampliado (`1fd6aca094`) para comparar também o frame
+com R/B trocados.
+
+No runtime controlado com a fixture limpa, o alvo crítico registrou:
+
+```text
+target_content_probe ... size=64x64 scissor=0,0,25,25
+target_content_probe ... readback_bgra=1 changed_outside=3471 changed_inside=49
+                               swapped_outside=3471 swapped_inside=49
+```
+
+A igualdade entre as duas comparações elimina a hipótese de troca R/B como
+causa do primeiro dano. O QEMU executou o caminho `reims-vgpu-pci` com
+`REIMS_VGPU_GUEST_IMPORT=off`, `GUEST_MEMORY=false` e terminou por timeout; não
+houve `device_lost`, panic ou reset do guest. Os draws seguintes do mesmo alvo
+voltaram a `changed_outside=0`, indicando que o defeito está concentrado na
+primeira materialização/estado inicial do alvo, antes da apresentação. O patch
+de produção foi mantido como correção de consistência do Store, mas não é ainda
+a solução do glitch. T009 continua `[-]`.
