@@ -816,3 +816,26 @@ Esse resultado descarta a importação direta como solução dos glitches e most
 que ela ainda piora a estabilidade do caminho atual. O perfil de trabalho volta
 a ser `REIMS_VGPU_GUEST_IMPORT=off`; não houve alteração de código nem de disco
 neste A/B.
+
+### Runtime #52 — reset do guest após pressão de residentes, causa ainda inconclusiva
+
+Foi iniciado um runtime controlado em `/home/felipeab10/Documentos/reims-t009-clean-sequoia-v2/validation-79ee/`
+com `REIMS_VGPU_GUEST_IMPORT=off`, `REIMS_VGPU_SAMPLED_IDENTITY=off`,
+`GUEST_MEMORY=false`, QEMU in-tree e `reims-vgpu-pci`. A execução apresentou o
+primeiro frame e permaneceu aproximadamente 80 minutos sem texto de panic no
+serial. Antes do reset, o census registrava `current=367/1525mib`,
+`resident_samples=1560`, `resample_peak_ms=60782/2000` e `slab_mib=1750/2192`.
+
+O evento final foi `vulkan_guest_reset resident=367 pooled_targets=0 sampled=109
+storage=9 context=1`, seguido de `device_reset ... mappings=25 tasks=15
+host_gva=5 frame_valid=1 frame_mapping=5 boundary=1 unmapped_views=17`. Isso é
+o caminho de reset do dispositivo chamado pelo QEMU quando o guest reinicia;
+não é, isoladamente, `VK_ERROR_DEVICE_LOST` nem prova de que a pressão de
+residentes causou o reboot. Após o reset, o host-window caiu para
+`host_window_cpu_fallback reason=slate_no_source` e os recursos foram liberados.
+
+A VM foi encerrada depois do evento para preservar a evidência. O resultado
+estreita o próximo diagnóstico para a correlação entre o reset/reboot do guest,
+o último ciclo de apresentação e a pressão de residentes, mas não justifica
+alterar reclaim, writeback ou barreiras sem uma captura QMP/serial do mesmo
+evento. T009 continua `[-]`.
