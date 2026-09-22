@@ -1177,6 +1177,20 @@ na produção/preservação do primeiro alvo — provavelmente na semântica de
 `LOAD`/cópia do seed — e não na apresentação nem no layout final. T009
 continua `[-]`.
 
+### Runtime #70 — Validação longa no wizard após a correção
+
+O caminho normal foi executado por 180 segundos com o patch do offset de slab,
+`REIMS_VGPU_GUEST_IMPORT=off`, `GUEST_MEMORY=false`, `reims-vgpu-pci` e a
+janela X11 residente. A VM apresentou o primeiro frame e continuou processando
+o wizard; houve várias primeiras materializações adicionais durante a sessão.
+
+Os contadores finais registraram `device_lost=0`, `recreates=0`,
+`fence_timeouts=0` e nenhum panic/reset do guest. O processo foi encerrado
+somente pelo timeout controlado, sem destruir ou substituir os discos. O probe
+de conteúdo confirmou `changed_outside=0` nos alvos observados após a
+correção. T009 continua `[-]` apenas para manter a validação formal pendente
+de uma sessão completa do wizard com inspeção visual final.
+
 ### Runtime #69 — Correção do offset do staging persistente
 
 Os A/B finais isolaram a causa na cópia do seed. Substituir temporariamente a
