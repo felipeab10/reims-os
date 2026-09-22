@@ -1219,3 +1219,20 @@ O build Vulkan passou. O teste unitário direcionado compilou e passou em 4/5
 casos; o quinto falhou numa asserção preexistente de lease de readback, fora do
 caminho alterado. T009 continua `[-]` até validar a mesma correção no wizard
 completo e em uma sessão mais longa.
+
+### Runtime #71 — Cursor visível e baseline de correção visual
+
+Durante a sessão longa do wizard, o ponteiro nativo inicialmente desapareceu
+enquanto o guest alternava o glyph e a visibilidade do cursor. A janela host
+começa com o cursor oculto e normalmente só o reexibe quando recebe um glyph
+válido do guest. Foi adicionado ao PR #5 o fallback opt-in
+`REIMS_VGPU_CURSOR_FORCE_VISIBLE=on`, que mantém o cursor nativo visível na
+janela X11 durante essa transição.
+
+Com o fallback ativo, o ponteiro voltou e a corrupção visual observada antes
+da correção do staging não reapareceu. O usuário observou uma pequena perda de
+fluidez, aceita neste baseline porque a prioridade é preservar pixels corretos
+e estabilidade. O fallback não é ativado por padrão; a correção universal de
+produção continua sendo o uso de `token.offset()` ao vincular buffers de
+staging persistentes Vulkan. T009 continua `[-]` até a validação formal do
+wizard completo e do desktop.
