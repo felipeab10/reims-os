@@ -1043,3 +1043,25 @@ não é equivalente ao residente naquele momento: ela produz alterações fora d
 scissor. Isso impede transformar a ampliação em patch de produção sem corrigir
 antes a autoridade/sincronização da semente GVA. O probe foi publicado e fica
 desligado por padrão; T009 continua `[-]`.
+
+### Runtime #63 — comparação direta entre seed CPU e residente
+
+O probe de conteúdo foi ampliado para registrar também `resident_sig` quando
+um draw parcial usa `target_rgba8`. No segundo runtime com
+`REIMS_VGPU_DONTCARE_SEED_PROBE=on`, as assinaturas coincidiram no alvo crítico
+e em outros alvos GVA, por exemplo:
+
+```text
+target_content_probe ... size=64x64 ... source=cpu_seed sig=e310bffde85a08f5 resident_sig=e310bffde85a08f5
+target_content_probe ... size=64x64 ... source=draw_readback sig=e310bffde85a08f5 changed_outside=0
+```
+
+Isso separa duas hipóteses: a semente CPU não está permanentemente divergente
+do residente, e a apresentação não é a origem. O primeiro runtime do A/B ainda
+registrou uma alteração fora do scissor na primeira materialização de um alvo
+64×64 (`changed_outside=3471`), mas os draws seguintes, já com seed e residente
+alinhados, preservaram a área externa. O caso restante é a transição inicial
+entre o alvo GVA sem conteúdo pronto, o seed CPU e a primeira renderização; não
+há evidência para ativar a ampliação em produção ainda. O runtime terminou por
+timeout, com `device_lost=0`, sem panic/reset e sem alteração destrutiva dos
+discos. T009 continua `[-]`.
