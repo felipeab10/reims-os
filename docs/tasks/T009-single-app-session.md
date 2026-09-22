@@ -1176,3 +1176,32 @@ O runtime terminou por timeout, apresentou o primeiro frame residente, sem
 na produção/preservação do primeiro alvo — provavelmente na semântica de
 `LOAD`/cópia do seed — e não na apresentação nem no layout final. T009
 continua `[-]`.
+
+### Runtime #69 — Correção do offset do staging persistente
+
+Os A/B finais isolaram a causa na cópia do seed. Substituir temporariamente a
+cópia por `vkCmdClearColorImage` produziu `changed_outside=0`; adicionar apenas
+uma barreira `HOST_WRITE → TRANSFER_READ` não mudou o dano (`3471`). Um probe
+que preenchia o buffer no próprio GPU também produziu `changed_outside=0`.
+
+A inspeção do pool encontrou a causa: o ponteiro CPU recebido do slab já usava
+`token.offset()`, mas o buffer Vulkan persistente era vinculado sempre no
+offset `0`. A CPU escrevia uma região e `vkCmdCopyBufferToImage` lia outra.
+O patch no PR #5 passou a usar `token.offset()` em `vkBindBufferMemory`; o
+caminho dedicado continua usando offset zero.
+
+Com o patch, no caminho normal (`REIMS_VGPU_GUEST_IMPORT=off`, sem probes de
+layout/cópia), a primeira materialização registrou:
+
+```text
+gva_first_materialization ... seed_cpu=1 seed_slot=1 guest_backed=0
+target_content_probe ... changed_outside=0 changed_inside=0
+                         swapped_outside=0 swapped_inside=0
+```
+
+O primeiro frame residente foi apresentado, sem `device_lost`, panic ou reset;
+a VM terminou apenas pelo timeout controlado e os discos foram preservados.
+O build Vulkan passou. O teste unitário direcionado compilou e passou em 4/5
+casos; o quinto falhou numa asserção preexistente de lease de readback, fora do
+caminho alterado. T009 continua `[-]` até validar a mesma correção no wizard
+completo e em uma sessão mais longa.
