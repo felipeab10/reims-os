@@ -586,6 +586,16 @@ Artefatos A/B: `/tmp/reims-t009-r41-historical-qemu/`,
 `/tmp/reims-t009-r42-current-qemu-samebase/` e
 `/home/felipeab10/Documentos/reims-t009-runtime-t001-r43-historical-rust/`.
 
+O runtime #44 repetiu somente o braço atual com `QEMU_REBOOT_ACTION=pause`,
+Xephyr `:112` e a mesma cópia-base. Publicou o frame de criação da janela,
+mas não o primeiro frame do convidado e não registrou `VK_ERROR_DEVICE_LOST`,
+panic ou shutdown natural antes do timeout. O resultado confirma que `pause`
+interrompe a consequência visível do guest-reset, mas não corrige a ausência
+da publicação pós-XNU; não há base para uma nova alteração especulativa no
+backend Vulkan.
+
+Artefato: `/home/felipeab10/Documentos/reims-t009-runtime-t001-r44-current-pause/`.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
