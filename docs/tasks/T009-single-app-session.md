@@ -638,3 +638,45 @@ override_redirect = yes
 O valor exato depende do servidor usado. No harness `Xephyr` já validado, o esperado depois da correção é `geometry_source=x11_root` com `position=+0,+0 size=1600x900`, porque aquele servidor não tem CRTC; num Xorg físico, `geometry_source=monitor`.
 
 Nesta rodada: `REAL_XORG_SESSION_STARTED=no`, `REAL_MACOS_VM_STARTED=no`, nenhum unit systemd criado, T010 não iniciada.
+
+## Correção do postmortem — propagação do modo WM-less
+
+O postmortem acima precisava de uma correção de cadeia. `reims-session.sh`
+atribuía `REIMS_VGPU_X11_WMLESS=1`, mas a variável não estava na lista de
+variáveis exportadas para o launcher. Assim, sondagens iniciadas pelo launcher
+podiam registrar `fullscreen=on` e ainda chegar ao QEMU com
+`x11_wmless=unset`, isto é, no caminho `wm=external`. Os artefatos que
+registram essa combinação não são evidência válida do contrato WM-less e não
+devem ser usados para concluir sobre a estabilidade da T009.
+
+A correção foi aplicada no PR #8 em `8dd1844`: o seletor agora é exportado
+junto com os demais parâmetros da sessão, e o teste T009 exige explicitamente
+essa exportação. A cadeia passou novamente nos 14 testes controlados.
+
+### Runtime #48 — primeiro boot realmente WM-less após a correção
+
+Fixture isolada: `/home/felipeab10/Documentos/reims-t009-runtime-t001-r48-export-fix-1790041545/`.
+O log confirmou simultaneamente:
+
+```text
+host_window_mode ... wm=none fullscreen=override_redirect geometry_source=x11_root position=+0,+0 size=1600x900
+vgpu_env ... fullscreen=on x11_wmless=on ... window_system=x11
+host_window_capture_engaged ... mechanism=x11_grab_keyboard
+```
+
+O runtime permaneceu vivo por 125 s sem `RESET` QMP, mas a fixture ficou no
+picker do OpenCore porque essa sondagem não enviou `Return`; portanto não
+houve `first guest frame`. Esse resultado valida a sessão e a captura, não o
+boot do macOS.
+
+### Runtime #49 — handoff ao XNU e bloqueador Vulkan/QEMU reproduzido
+
+Fixture isolada: `/home/felipeab10/Documentos/reims-t009-runtime-t001-r49-return-wmless-1790041722/`.
+O serial chegou a `#[EB|LOG:HANDOFF TO XNU]`, e o diagnóstico confirmou
+`wm=none`, `x11_wmless=on` e captura engajada. Depois do handoff, o convidado
+produziu trabalho gráfico e o backend registrou `vulkan_guest_reset` com
+`resident=2`, seguido de `device_reset`; o supervisor classificou a sessão
+como `GUEST_REBOOT`. Não houve `VK_ERROR_DEVICE_LOST`, SIGSEGV ou pânico
+serial. Portanto o problema de teclado/captura e de seleção do caminho
+WM-less está resolvido; o bloqueador restante é a estabilidade do guest após
+o handoff gráfico, ainda sem base para marcar a T009 como concluída.
