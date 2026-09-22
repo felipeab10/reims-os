@@ -564,14 +564,16 @@ staticlib Vulkan:
 - #42, revisão atual `fcc2d39`/`33ba39d`, publicou apenas o primeiro frame e
   registrou `RESET guest=true reason=guest-reset` aproximadamente 62 segundos
   depois, repetindo o ciclo EFI → XNU;
-- #43, último ponto conhecido antes do espelhamento do cursor (`9f93935`),
-  recompilado isoladamente, voltou a publicar o frame do convidado e permaneceu
-  sem reset durante 105 segundos.
+- #43, revisão anterior ao espelhamento do cursor (`9f93935`), recompilado
+  isoladamente, publicou o frame do convidado e permaneceu sem reset durante
+  105 segundos;
+- #45, revisão atual, no caminho WM-less válido e com `pause`, voltou a publicar
+  o frame do convidado durante 105 segundos.
 
-Esse A/B torna o bloqueador reproduzível no staticlib Rust introduzido depois
-de `9f93935`, e não no QEMU ou no disco. O reset ainda não deve ser tratado
-como resolvido; T009 continua `[-]` até haver desktop macOS estável e shutdown
-natural.
+Esse conjunto não prova uma regressão determinística no staticlib Rust: o braço
+atual também consegue chegar ao frame quando o reset é impedido de reiniciar o
+guest. O reset observado continua aberto e precisa de repetição com evidência
+causal; T009 continua `[-]` até haver desktop macOS estável e shutdown natural.
 
 A mesma investigação explicou a tela do OpenCore sem teclado/mouse observada
 no Xephyr: a janela podia confirmar foco X11, mas a captura era solicitada
@@ -594,7 +596,12 @@ interrompe a consequência visível do guest-reset, mas não corrige a ausência
 da publicação pós-XNU; não há base para uma nova alteração especulativa no
 backend Vulkan.
 
-Artefato: `/home/felipeab10/Documentos/reims-t009-runtime-t001-r44-current-pause/`.
+O #44 foi invalidado no pós-mortem: faltou `REIMS_VGPU_FULLSCREEN=1` e ele
+rodou no caminho comum (`wm=external`, `fullscreen=sized`), fora do contrato
+WM-less da T009. O artefato permanece somente como tentativa inválida:
+`/home/felipeab10/Documentos/reims-t009-runtime-t001-r44-current-pause/`.
+
+Artefato válido mais recente: `/home/felipeab10/Documentos/reims-t009-runtime-t001-r45-current-wmless-pause/`.
 
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
