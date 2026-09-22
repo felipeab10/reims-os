@@ -1489,3 +1489,104 @@ há um build dessa versão nem SDK Xcode disponível no guest, então não foi
 inventada nem aplicada uma alteração de produção não compilável. Até uma
 validação de desempenho autorizada, SwiftShader serve apenas como controle de
 funcionalidade WebGL. A VM permaneceu ativa e nenhum teste de FPS foi iniciado.
+
+### Runtime #81 — Quadro obsoleto após reboot e decomposição de staging
+
+Após a GUI voltar a apresentar artefatos (captura fornecida pelo usuário em
+`/tmp/codex-clipboard-f587d322-e16f-45c3-b397-f02c61d8cd32.png`), comparamos o
+relógio visível do macOS com o relógio obtido por SSH: a tela estava cerca de
+dez minutos atrasada enquanto o guest ainda respondia e QMP continuava ativo.
+Isso é evidência de imagem apresentada obsoleta, não prova isolada de que todo
+o macOS estivesse congelado. A captura foi preservada em
+`/tmp/reims-t009-pre-full-shutdown.png` e o log Vulkan completo em
+`/tmp/reims-vgpu-fail.log`. Foi feito shutdown normal pelo guest; o processo
+QEMU encerrou e o socket QMP desapareceu. Nenhum disco foi removido nem
+alterado deliberadamente.
+
+O log não mostra perda/recriação de dispositivo (`device_lost=0`,
+`recreates=0`) nem espera de fence correspondente aos picos. Em vez disso,
+`OFF staging_write_slow kind=acquire` registrou repetidamente aproximadamente
+600 ms para buffers de cerca de 254–262 KB. A decomposição disponível na
+época atribui quase todo o intervalo à aquisição (`acquire_us`), enquanto
+`runs_us` ficou na casa de centenas de microssegundos; isso aponta para o
+caminho de obtenção/criação de staging, mas ainda não identifica a chamada
+Vulkan ou contenção responsável. A telemetria agregada do pool não isolava o
+evento lento.
+
+Foi adicionada instrumentação lazy em `reims-vgpu`: apenas quando uma aquisição
+excede o limite já existente de 20 ms, a linha `staging_write_slow` inclui os
+tempos de `create_buffer`, consulta de requisitos, seleção do tipo de memória,
+aquisição do slab, alocação dedicada e bind. Em chamadas normais não há
+formatação da string de diagnóstico. O caminho de renderização e a política de
+staging não foram alterados nesta mudança.
+
+Verificação: `cargo check -p reims-vgpu --no-default-features --features
+backend-vulkan,host-window` passou. A execução serial da suíte registrou 2252
+testes aprovados e um teste preexistente de timing falhou
+(`the_drain_duty_census_separates_a_flush_tail_from_a_flush_mean`), inclusive
+quando executado isoladamente; não foi alterado por esta instrumentação.
+`git diff --check` passou. O runtime controlado posterior e a decomposição
+detalhada estão registrados abaixo.
+
+### Runtime #82 — Alocação dedicada no fallback de snapshot e janela de retenção
+
+A build instrumentada foi iniciada em 22/09 no disco persistente preservado
+`reims-t009-clean-sequoia-v2/persistent`, com
+`REIMS_VGPU_GUEST_IMPORT=off`, `REIMS_VGPU_SAMPLED_IDENTITY=off` e
+`REIMS_VGPU_STAGING_DETAIL=1`. QMP e SSH host-forward foram configurados; a
+janela do guest ficou na workspace 3 do Niri, por isso não era visível enquanto
+a workspace 4 estava selecionada. A captura `/tmp/reims-t009-vm-window-visible.png`
+confirma a GUI do Sequoia em execução. Nenhum benchmark novo foi iniciado.
+
+A instrumentação isolou o custo: entre `t=463208` e `t=934649`, o log registra
+picos recorrentes de 600–611 ms em `OFF staging_write_slow`. Em cada caso quase
+todo o tempo está dentro de `vkAllocateMemory` (`allocation_us`), para alocações
+dedicadas de staging; criação do buffer, requisitos, seleção de memória e bind
+custam apenas microssegundos. O caminho é o fallback CPU-snapshot de
+`exec.rs`, que intencionalmente evita manter o destino persistentemente mapeado
+depois do SIGSEGV observado no runtime #3. Os picos repetiram aproximadamente
+a cada 60 s; `device_lost=0` e `recreates=0`, portanto não há evidência de perda
+do dispositivo Vulkan nesses eventos.
+
+A causa mais provável para a re-alocação recorrente é o gate de trim: três
+passagens de manutenção (cerca de 300 ms) sem aquisições já autorizavam destruir
+buffers host-visible livres. Uma pausa entre atualizações periódicas pode assim
+esvaziar o pool muito antes da próxima atualização, que paga a alocação Vulkan
+síncrona. A correlação temporal e o código sustentam essa hipótese; uma nova
+execução comparativa ainda deve confirmar que o novo gate elimina os picos.
+
+Patch local: o buffer pool agora exige também 90 s contínuos sem atividade de
+staging antes de ser aparado. Isso mantém buffers recicláveis entre atualizações
+periódicas e preserva o caminho seguro unmapped do snapshot; em contrapartida,
+buffers não usados podem permanecer alocados até 90 s depois da última
+atividade. Os testes direcionados para o gate de trim e para a manutenção com
+tráfego passaram, assim como `cargo check` com
+`backend-vulkan,host-window` e `git diff --check`. O processo QEMU deixou de
+existir às 18:07 locais e o socket QMP desapareceu; o serial contém apenas o
+boot inicial e não estabelece se o encerramento foi shutdown, timeout ou saída
+externa. Nenhum disco foi apagado. Próxima validação: novo runtime controlado,
+com a build alterada, verificar se buffers de 256 KiB são reutilizados após
+intervalos de 60 s, correlacionando os logs com captura, QMP e relógio do guest.
+T009 continua `[-]` até essa comparação confirmar os ganhos sem regressão visual.
+
+Na segunda execução com a build alterada, a captura
+`/tmp/reims-t009-runtime-90s-check.png` mostrou o diálogo do macOS informando
+reinício inesperado. O relatório preservado em
+`/tmp/reims-t009-Kernel-2026-09-22-152146.panic` tem timestamp local do guest
+15:21:46 (22:21:46 UTC), cerca de 13 s após a sessão QEMU atingir QMP-ready.
+O texto é `mp_kdp_enter() timed-out on cpu 4, NMI-ing` seguido de
+`Nested panic detected`; portanto, houve kernel panic real. O QMP não registrou
+`VK_ERROR_DEVICE_LOST` nem recriação, e os censos disponíveis permaneceram em
+`device_lost=0`, mas não houve correlação de RESET no lifecycle/serial — o
+serial EFI encerra no handoff a XNU. A amostra não basta para atribuir esse
+panic à alteração de retenção, nem para confirmar que foi causado pelo vGPU.
+
+O runtime durou cerca de seis minutos, insuficiente para validar o padrão de
+staging a cada 60 s após o boot estabilizar; não foram iniciados benchmarks.
+O guest foi desligado via SSH e o QMP confirmou `SHUTDOWN guest=true`, com
+QEMU saindo em código 0. O qcow2 persistente continua preservado. Nesta amostra
+curta não se registrou `staging_write_slow` acima do limiar; assim, a validação
+do gate de 90 s segue pendente. O host não forneceu linhas de kernel/journal
+correlacionáveis ao panic. O próximo runtime deve coletar as mudanças de
+`kern.boottime` e dos relatórios de panic antes/depois, junto com QMP e
+telemetria, além de observar ao menos 90 s após estabilização.
