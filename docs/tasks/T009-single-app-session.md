@@ -1091,3 +1091,26 @@ voltaram a `changed_outside=0`, indicando que o defeito está concentrado na
 primeira materialização/estado inicial do alvo, antes da apresentação. O patch
 de produção foi mantido como correção de consistência do Store, mas não é ainda
 a solução do glitch. T009 continua `[-]`.
+
+### Runtime #65 — A/B da primeira materialização sem seed/LOAD
+
+Foi adicionado o probe opt-in `REIMS_VGPU_FIRST_MATERIALIZATION_CLEAR_PROBE=on`
+(`fe72c069ca`). Ele afeta somente um alvo GVA novo com draw parcial: remove o
+seed CPU e inicia o pass com `CLEAR` transparente. No caminho normal, o mesmo
+alvo registrou `Color0Load=Preserve`, `seed_cpu=1`, `seed_slot=1`,
+`target_access=UNDEFINED` e `pass_layout=GENERAL`, seguido de
+`changed_outside=3471`. Com o A/B, os campos passaram a `Color0Load=Clear` e
+`seed_slot=0`, e o probe registrou:
+
+```text
+target_content_probe ... size=64x64 ... scissor=0,0,25,25
+target_content_probe ... changed_outside=0 changed_inside=0
+                         swapped_outside=0 swapped_inside=0
+```
+
+O resultado elimina novamente o raster/scissor e restringe a causa ao caminho
+de primeira carga `seed CPU → buffer-to-image → LOAD` (ou à sincronização/layout
+que o precede). O A/B é apenas diagnóstico e continua desligado por padrão; a
+próxima alteração de produção deve corrigir essa sequência sem descartar
+conteúdo real do guest. Runtime terminou por timeout, sem `device_lost`, panic,
+reset ou alteração destrutiva dos discos. T009 continua `[-]`.
