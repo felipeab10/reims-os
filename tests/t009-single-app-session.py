@@ -149,6 +149,13 @@ class T009SingleAppSessionTests(unittest.TestCase):
         self.assertNotIn("boot-x86.sh", proc.stdout)
         print("T009_LAUNCHER_CHAIN=PASS")
 
+    def test_install_reboot_keeps_qemu_alive(self):
+        boot = (ROOT / "components/reims-vgpu/vm/boot-x86.sh").read_text()
+        self.assertIn('QEMU_REBOOT_ACTION="${QEMU_REBOOT_ACTION:-exit}"', boot)
+        self.assertIn('QEMU_ARGS+=(-action reboot=reset)', boot)
+        self.assertIn('QEMU_ARGS+=(-action reboot=shutdown)', boot)
+        print("T009_INSTALL_REBOOT_RESET=PASS")
+
     def test_exit_status_preserved(self):
         ok = self.run_session()
         direct_ok = subprocess.run(["bash", str(LAUNCHER), "--dry-run"], env=self.session_env(), cwd=ROOT, capture_output=True, text=True)
