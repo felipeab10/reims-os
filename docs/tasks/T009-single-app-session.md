@@ -1300,6 +1300,16 @@ menor risco, sempre atrás de um perfil experimental. Se o código ARM/vmapple
 for publicado antes desse marco, a implementação será reavaliada contra ele e
 o foco poderá mudar para validação do caminho oficial.
 
+Uma nova conferência do upstream (`steelbrain/reims-vgpu`, master
+`69a57dd69a`) não encontrou o código ARM/vmapple. O plugin PCI do macOS também
+não existe neste checkout: só temos o shim QEMU, o modelo Rust e as medições
+do framework Apple que vem no guest. Portanto, a resposta de
+`supportsOpenGL` não pode ser alterada pelo host Linux. As rotas conhecidas
+`0x8a`–`0x98` também não podem ser convertidas em comandos Vulkan por analogia:
+há campos como LOD bias e resolve targets sem executor equivalente comprovado.
+O próximo passo de execução requer o código do driver guest ou um trace válido
+emitido por uma personalidade que habilite essa superfície.
+
 O inventário passou a guardar também o nome do seletor e o tamanho esperado do
 corpo de cada registro. Quando um opcode aparecer, o log identifica o seletor
 e compara `expected_body_len` com `actual_body_len`, mantendo o hex inicial do
