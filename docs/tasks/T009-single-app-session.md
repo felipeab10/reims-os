@@ -1446,3 +1446,46 @@ Command Line Tools ou reinício. O Chrome e o QEMU seguem ativos; nenhum teste
 de FPS foi iniciado. Os próximos trabalhos continuam no limite do contrato de
 famílias e da compatibilidade do browser, não na instrumentação de pacing do
 host.
+
+### Runtime #79 — ANGLE Metal versus SwiftShader no Chrome 153
+
+Foi criado `components/reims-vgpu/scripts/browser-probe/chrome-angle-backend-probe.sh`.
+O probe usa perfis temporários distintos, coleta `chrome://gpu`, cria um
+contexto WebGL via DevTools Protocol e encerra somente o Chrome de diagnóstico.
+O Chrome normal (PID 387) e a VM permaneceram ativos. Não houve medição de FPS,
+mudança persistente no guest nem alteração de capabilities do Reims.
+
+Com seleção padrão do Chrome e também com `--use-gl=angle --use-angle=metal`,
+o processo GPU não inicializa EGL (`GLDisplayEGL::Initialize failed`), termina
+como `--use-gl=disabled` e o contexto WebGL retorna `false`. Com
+`--use-gl=angle --use-angle=swiftshader`, o Chrome cria contexto **WebGL 2**;
+o renderer informa explicitamente `ANGLE (Google, Vulkan 1.3.0 (SwiftShader
+Device (Subzero) (0x0000C0DE)), SwiftShader driver)`. Portanto, o backend
+compatível funciona, mas é renderização por software. Embora `chrome://gpu`
+marque algumas linhas como “Hardware accelerated”, o identificador SwiftShader
+é a evidência decisiva de que isso não equivale a aceleração pela GPU virtual e
+não demonstra melhoria de FPS. O WebGPU continuou software/desabilitado.
+
+### Runtime #80 — Fallback automático e limite do override ANGLE
+
+A [fonte exata do Chromium 153 para macOS](https://chromium.googlesource.com/chromium/src/+/792bf6722e73a45aa9e47c163b9901bdc17f3230/ui/gl/init/gl_factory_mac.cc)
+lista Metal seguido de SwiftShader. Porém, na execução padrão neste guest, o
+Chrome escolheu Metal e terminou com GL desativado; não observamos tentativa
+automática bem-sucedida de SwiftShader. A versão instalada permite selecionar
+SwiftShader explicitamente, o que fornece WebGL funcional como modo de
+compatibilidade, mas não deve ser apresentado como solução de desempenho.
+
+Também foi testado `ANGLE_FEATURE_OVERRIDES_DISABLED=requireGpuFamily2`. Isso
+não remove a barreira nesta revisão: em `DisplayMtl::initializeFeatures`,
+`ApplyFeatureOverrides` ocorre antes de `ANGLE_FEATURE_CONDITION(...,
+requireGpuFamily2, true)`, que volta a ativá-la. O Chrome continuou falhando na
+inicialização EGL. Logo, esse override não é um patch utilizável.
+
+O probe reproduzível e os relatórios locais foram mantidos sob `/tmp` no host e
+no guest. O próximo passo de código é uma mudança no Chromium/ANGLE para tentar
+SwiftShader somente após a falha do backend Metal, mantendo Metal prioritário
+quando inicializa. Isso exige checkout/build de Chromium para macOS; ainda não
+há um build dessa versão nem SDK Xcode disponível no guest, então não foi
+inventada nem aplicada uma alteração de produção não compilável. Até uma
+validação de desempenho autorizada, SwiftShader serve apenas como controle de
+funcionalidade WebGL. A VM permaneceu ativa e nenhum teste de FPS foi iniciado.
