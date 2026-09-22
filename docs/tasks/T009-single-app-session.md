@@ -1280,3 +1280,22 @@ válida e universal para a cópia Vulkan, mas aceleração ANGLE/Metal como no
 screenshot exige validar um host Apple Silicon com `boot-arm64.sh` ou um novo
 backend de interop EGL/Metal para Linux. T009 continua `[-]`; os discos e o
 estado persistente permanecem preservados.
+
+### Runtime #73 — Preparação da camada de compatibilidade OpenGL/ANGLE
+
+O upstream ainda não publicou a implementação ARM/vmapple que permitiria uma
+comparação direta. Enquanto isso, o PR #5 recebeu uma primeira camada de
+instrumentação segura: os 15 opcodes liberados pelo rung OpenGL do serializer
+agora possuem um inventário explícito no host e, caso algum guest os envie, o
+registro `render_unimplemented` passa a marcá-los como `class=opengl_compat`.
+
+Essa entrega não anuncia OpenGL ao guest e não altera o caminho Vulkan. Isso é
+intencional: o driver PCI macOS ainda responde `supportsOpenGL = false`, e o
+executor não implementa esses 15 registros. Anunciar a capacidade antes de
+implementar o executor faria o guest emitir comandos que poderiam causar
+corrupção ou panic.
+
+O próximo marco é implementar e validar os registros necessários em ordem de
+menor risco, sempre atrás de um perfil experimental. Se o código ARM/vmapple
+for publicado antes desse marco, a implementação será reavaliada contra ele e
+o foco poderá mudar para validação do caminho oficial.
