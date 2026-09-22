@@ -771,3 +771,18 @@ protege essa relação. Portanto não há correção causal segura para aplicar 
 camada com a evidência atual; o próximo dado necessário é o primeiro bind de
 residente que chega com `content_ready/access/generation` incompatíveis com o
 Store que o produziu.
+
+### Instrumentação do próximo runtime — admissão de amostra residente
+
+O PR #5 agora registra, no ponto efetivo de bind de `SampledSource::Target`, a
+primeira combinação suspeita por geometria: residente ausente, `content_ready`
+falso, dimensões divergentes ou multisampling incompatível. O evento inclui
+`access`, geração, indicação de backing compartilhado e o motivo de reclaim
+mais recente. A telemetria é limitada por `first_sight`, não altera barreiras,
+layouts ou seleção de snapshot/feedback, e foi adicionada em
+`abb9ccb8a9`.
+
+Validações: 58 testes do executor Vulkan e build release passaram; nenhum
+runtime novo foi iniciado. O próximo runtime controlado deve procurar
+`sampled_resident_admission_suspect` no log antes de qualquer nova alteração de
+sincronização.
