@@ -839,3 +839,27 @@ estreita o próximo diagnóstico para a correlação entre o reset/reboot do gue
 o último ciclo de apresentação e a pressão de residentes, mas não justifica
 alterar reclaim, writeback ou barreiras sem uma captura QMP/serial do mesmo
 evento. T009 continua `[-]`.
+
+### Runtime #53 — captura visual correlacionada ao reset
+
+Foi repetido o perfil seguro em `/home/felipeab10/Documentos/t009-clean-sequoia-v2/validation-79ee/`,
+com o serial `components/reims-vgpu/vm/disks/run/serial-20260922-040115.log`.
+Além do log Vulkan, foi capturada diretamente a janela X11 `Reims vGPU` pelo
+window id `0x1000002`, sem capturar a área de trabalho do host. A imagem inicial
+mostrou o logo da Apple; na amostra seguinte a janela ficou totalmente preta.
+
+O intervalo correspondente no log é:
+
+```text
+registry_pressure current=447/2016mib ... resident_samples=2598 ... t=6088167
+vulkan_guest_reset resident=447 pooled_targets=0 sampled=140 storage=9 context=1 t=6089016
+device_reset id=1 seq=2 mappings=28 tasks=12 host_surface=2 host_texture=0 host_gva=13 host_linear=0 frame_valid=1 frame_mapping=4 boundary=1 unmapped_views=20 t=6089031
+host_window_cpu_fallback reason=slate_no_source want=0x0 seen=absent t=6089034
+```
+
+Essa é a primeira correlação visual objetiva entre a perda do conteúdo exibido e
+o reset do guest/dispositivo. O `device_reset` ocorre sem
+`VK_ERROR_DEVICE_LOST`; portanto, a captura confirma o sintoma e a ordem dos
+eventos, mas ainda não identifica se o reboot foi provocado pelo guest ou se
+houve uma falha Vulkan anterior. O runtime foi encerrado imediatamente após o
+evento, sem destruir os discos. T009 continua `[-]`.
