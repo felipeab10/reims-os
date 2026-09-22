@@ -1114,3 +1114,23 @@ que o precede). O A/B é apenas diagnóstico e continua desligado por padrão; a
 próxima alteração de produção deve corrigir essa sequência sem descartar
 conteúdo real do guest. Runtime terminou por timeout, sem `device_lost`, panic,
 reset ou alteração destrutiva dos discos. T009 continua `[-]`.
+
+### Runtime #66 — A/B com seed conhecido de zeros
+
+Para separar os bytes do guest do mecanismo Vulkan, o PR #5 recebeu o probe
+`REIMS_VGPU_FIRST_MATERIALIZATION_ZERO_SEED_PROBE=on` (`cf6ea0d9d7`). Ele
+mantém `Color0Load=Preserve` e `seed_slot=1`, mas substitui o conteúdo do seed
+CPU por zeros antes do `vkCmdCopyBufferToImage`. O alvo crítico registrou:
+
+```text
+gva_first_materialization ... color0_load=Preserve seed_cpu=1 seed_slot=1
+                             target_access=UNDEFINED pass_layout=GENERAL
+target_content_probe ... changed_outside=3471 changed_inside=49
+                         swapped_outside=3471 swapped_inside=49
+```
+
+O resultado é idêntico ao baseline. Portanto, o conteúdo/ordem do seed do guest
+não é a causa; o defeito está na sequência de primeira carga Vulkan — cópia,
+barreira/layout ou `LOAD` do render pass. O probe permanece desligado por
+padrão. Runtime terminou por timeout, sem `device_lost`, panic, reset ou
+alteração destrutiva dos discos. T009 continua `[-]`.
