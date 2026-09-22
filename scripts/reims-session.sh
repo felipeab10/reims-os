@@ -74,13 +74,19 @@ fi
 #   REIMS_VGPU_X11_WMLESS=1       how the window takes the screen without a WM
 #
 # The remaining knobs keep product defaults but never overwrite an explicit
-# operator value.
+# operator value. Direct guest-RAM import is disabled for the product session
+# until the reims-vgpu import path is stable on this host: with the default
+# import rail, the Sequoia guest enters a kernel-panic/reboot loop after XNU
+# handoff. `off` selects the copying rail and is a stability workaround, not a
+# graphics-quality fix.
 export REIMS_VGPU_WINDOW_SYSTEM=x11
 export REIMS_VGPU_X11_WMLESS=1
 : "${REIMS_VGPU_WINDOW:=1}"
 : "${REIMS_VGPU_FULLSCREEN:=1}"
 : "${REIMS_VGPU_BACKEND:=vulkan}"
-export REIMS_VGPU_WINDOW REIMS_VGPU_FULLSCREEN REIMS_VGPU_BACKEND REIMS_VGPU_X11_WMLESS
+: "${REIMS_VGPU_GUEST_IMPORT:=off}"
+export REIMS_VGPU_WINDOW REIMS_VGPU_FULLSCREEN REIMS_VGPU_BACKEND \
+  REIMS_VGPU_GUEST_IMPORT REIMS_VGPU_X11_WMLESS
 
 if [ "$DRY" -eq 1 ]; then
   printf 'SESSION_TYPE=%s\n' "x11"
@@ -93,6 +99,7 @@ if [ "$DRY" -eq 1 ]; then
   printf 'REIMS_VGPU_WINDOW=%s\n' "$REIMS_VGPU_WINDOW"
   printf 'REIMS_VGPU_FULLSCREEN=%s\n' "$REIMS_VGPU_FULLSCREEN"
   printf 'REIMS_VGPU_BACKEND=%s\n' "$REIMS_VGPU_BACKEND"
+  printf 'REIMS_VGPU_GUEST_IMPORT=%s\n' "$REIMS_VGPU_GUEST_IMPORT"
   # Prove the delegation target by running it; it starts no QEMU in dry-run.
   exec "$LAUNCHER" --dry-run
 fi

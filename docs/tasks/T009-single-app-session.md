@@ -64,7 +64,19 @@ REIMS_VGPU_X11_WMLESS=1    contrato da sessão, não desligável nela
 REIMS_VGPU_WINDOW=1        default se ausente
 REIMS_VGPU_FULLSCREEN=1    default se ausente
 REIMS_VGPU_BACKEND=vulkan  default se ausente
+REIMS_VGPU_GUEST_IMPORT=off  workaround de estabilidade; override explícito preservado
 ```
+
+### Mitigação de estabilidade do guest
+
+O primeiro boot limpo com `reims-vgpu-pci` reproduziu kernel panic/reboot loop
+quando o caminho padrão de importação direta da RAM do guest estava ativo. O
+mesmo disco chegou ao Setup Assistant com QEMU do host, com `vmware-svga` e
+com `REIMS_VGPU_GUEST_IMPORT=off`; neste último caso o dispositivo customizado
+permaneceu estável. A sessão dedicada, portanto, força `off` e usa o caminho
+de cópia como mitigação temporária. Isso não corrige os glitches visuais nem
+marca a T009 como concluída; a investigação do import direto fica separada no
+`reims-vgpu`.
 
 `winit 0.30` não tem `WINIT_UNIX_BACKEND` e prefere Wayland quando `WAYLAND_DISPLAY`/`WAYLAND_SOCKET` e `DISPLAY` coexistam. Por isso o seletor do companion remove as variáveis Wayland em `x11` e recusa quando `DISPLAY` está vazio, e o `boot-x86.sh` não recria `WAYLAND_DISPLAY` nesse modo. Um `DISPLAY` definido, por si só, não prova X11.
 

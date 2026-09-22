@@ -130,6 +130,17 @@ class T009SingleAppSessionTests(unittest.TestCase):
         self.assertEqual(self.contract(self.run_session())["REIMS_VGPU_BACKEND"], "vulkan")
         print("T009_VULKAN_CONTRACT=PASS")
 
+    def test_guest_import_stability_default(self):
+        self.assertEqual(
+            self.contract(self.run_session())["REIMS_VGPU_GUEST_IMPORT"],
+            "off",
+        )
+        self.assertEqual(
+            self.contract(self.run_session(REIMS_VGPU_GUEST_IMPORT="on"))["REIMS_VGPU_GUEST_IMPORT"],
+            "on",
+        )
+        print("T009_GUEST_IMPORT_STABILITY_DEFAULT=PASS")
+
     def test_wayland_env_cleared(self):
         proc = self.run_session(WAYLAND_DISPLAY="wayland-1", WAYLAND_SOCKET="/run/user/1000/wayland-1")
         fields = self.contract(proc)
