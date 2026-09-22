@@ -1236,3 +1236,47 @@ e estabilidade. O fallback não é ativado por padrão; a correção universal d
 produção continua sendo o uso de `token.offset()` ao vincular buffers de
 staging persistentes Vulkan. T009 continua `[-]` até a validação formal do
 wizard completo e do desktop.
+
+### Runtime #72 — Limite de aceleração do Chrome no caminho x86/Vulkan
+
+Foi feita uma verificação read-only na instalação persistente já criada, sem
+alterar o disco e sem iniciar um novo runtime. O guest está em macOS 15.8
+`x86_64`, com `reims-vgpu-pci`, backend Vulkan no host Linux e o dispositivo
+Apple Paravirtualized Graphics Device visível para o sistema:
+
+```text
+Vendor: Apple (0x106b)
+Device ID: 0xeeee
+VRAM: 64 MB
+Metal Support: Metal 2
+QEMU display: 1920x1080
+```
+
+O Chrome persistente foi encontrado em `/Applications/Google Chrome.app`, mas
+`chrome://gpu` reportou Canvas, compositing, rasterização, WebGL e WebGPU como
+software/desativados. O GPU process foi iniciado com `--use-gl=disabled`.
+Forçar temporariamente `--ignore-gpu-blocklist`, ANGLE/Metal, rasterização e
+WebGPU não mudou as capacidades efetivas. O teste com `--in-process-gpu`
+também falhou, eliminando sandbox e permissões como causa.
+
+O log detalhado do Chrome identificou a falha antes da apresentação do frame:
+
+```text
+Initialization of all (1) EGL display types failed
+GLDisplayEGL::Initialize failed
+gl::init::InitializeGLNoExtensionsOneOff failed
+Exiting GPU process due to errors during initialization
+```
+
+Isso não é equivalente ao screenshot do desenvolvedor: aquele resultado usa o
+caminho arm64 macOS/vmapple com `reims-vgpu-mmio` e Metal/ANGLE nativo. O
+caminho PCI x86 não consegue selecionar a personalidade ARM do driver Apple;
+trocar IDs PCI ou adicionar flags ao Chrome não alcança esse provider. Portanto
+não foi aplicado patch especulativo no backend Vulkan, nem o Chrome foi forçado
+a um modo que apenas mascara a falha.
+
+Conclusão operacional: a correção de pixels do runtime #69/#70 permanece
+válida e universal para a cópia Vulkan, mas aceleração ANGLE/Metal como no
+screenshot exige validar um host Apple Silicon com `boot-arm64.sh` ou um novo
+backend de interop EGL/Metal para Linux. T009 continua `[-]`; os discos e o
+estado persistente permanecem preservados.
