@@ -700,3 +700,37 @@ como `GUEST_REBOOT`. Não houve `VK_ERROR_DEVICE_LOST`, SIGSEGV ou pânico
 serial. Portanto o problema de teclado/captura e de seleção do caminho
 WM-less está resolvido; o bloqueador restante é a estabilidade do guest após
 o handoff gráfico, ainda sem base para marcar a T009 como concluída.
+
+### Postmortem do runtime #4 — glitches Vulkan ainda não atribuídos
+
+O runtime controlado com a instalação limpa do Ventura chegou ao Setup Assistant
+com o caminho WM-less correto, foco/capture ativos e input funcional, mas exibiu
+corrupção parcial em textos, ícones e controles. O mesmo padrão apareceu nas
+telas “Transfer Your Data to This Mac” e “Written and Spoken Languages”. A
+janela host não é a causa: o caminho QEMU com `vmware-svga` chegou ao mesmo
+setup sem depender do renderizador Vulkan do `reims-vgpu`.
+
+O postmortem foi somente leitura sobre os artefatos existentes; não houve novo
+runtime, alteração de disco/EFI ou merge. A instrumentação registrou amostras
+de residentes em `B8G8R8A8_UNORM`, com swizzle identidade, e também mostrou o
+caminho normal de texturas de convidado (`bytes`/`guest_runs`). O modo
+experimental que forçava snapshots para amostras residentes foi compilado e
+executado como A/B; os glitches permaneceram. Isso descarta o snapshot como
+correção suficiente e não justifica mantê-lo no código.
+
+Há uma população pequena de quatro draws parciais classificados como
+`draw_partial_preserving_unseeded_guest_backed`, com 13.884 texels de área
+não coberta. Essa classificação é uma telemetria conservadora feita antes da
+montagem final do `DrawRequest`; ela ainda não prova que esses quatro draws
+destruíram pixels, pois o engine pode resolver o conteúdo por residente ou
+backing compartilhado depois. A próxima implementação deve correlacionar essa
+classificação com `Color0Load`, `load_uses_gpu_content`, identidade do alvo e
+estado `content_ready` no ponto de admissão do render pass.
+
+O resultado é consistente com a issue upstream
+[`steelbrain/reims-vgpu#90`](https://github.com/steelbrain/reims-vgpu/issues/90),
+que descreve corrupção tiled/white no caminho Vulkan Linux e recomenda
+classificar o primeiro draw parcial incorreto e auditar LOAD/store, continuação
+de pass e estado do residente. O bloqueador atual permanece aberto: há base
+para uma próxima correção causal no backend Vulkan, mas não para marcar T009
+como concluída.
