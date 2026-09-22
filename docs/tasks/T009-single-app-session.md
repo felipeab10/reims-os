@@ -786,3 +786,19 @@ Validações: 58 testes do executor Vulkan e build release passaram; nenhum
 runtime novo foi iniciado. O próximo runtime controlado deve procurar
 `sampled_resident_admission_suspect` no log antes de qualquer nova alteração de
 sincronização.
+
+### Runtime #50 — diagnóstico de admissão sem anomalia
+
+Fixture controlada: `/home/felipeab10/Documentos/reims-t009-clean-sequoia-v2/`;
+serial: `components/reims-vgpu/vm/disks/run/serial-20260922-014812.log`.
+O runtime usou o QEMU in-tree com `reims-vgpu-pci`, `GUEST_MEMORY=false`,
+`wm=none`, captura X11 e `QEMU_REBOOT_ACTION=reset`. Publicou o primeiro frame
+do guest via residente e permaneceu 180 s até o timeout controlado, sem
+`RESET`, `VK_ERROR_DEVICE_LOST` ou `vulkan_guest_reset` no artefato serial.
+
+O evento `sampled_resident_admission_suspect` não apareceu. A hipótese de que
+um residente ausente, não-pronto, com geração/geometria divergente ou
+multisampling incompatível esteja sendo aceito no primeiro bind fica, portanto,
+sem evidência neste cenário. A instrumentação permanece no PR #5 para capturar
+o caso se ele surgir em outro ciclo; a causa dos glitches segue aberta no nível
+de produção/consumo de conteúdo já válido ou no caminho Vulkan/QEMU posterior.
