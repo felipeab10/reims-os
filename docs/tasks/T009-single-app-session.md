@@ -920,3 +920,28 @@ aumentou e a barra/botões continuaram defeituosos. Isso descarta a falta de
 semente GVA como explicação suficiente para esta tela. A evidência acumulada
 agora localiza o defeito antes da apresentação, no conteúdo produzido por
 draws/targets válidos; não há patch de produção justificado ainda.
+
+### A/B runtime #57 — quebrar continuação de render pass não corrige o frame
+
+Foi repetida a fixture com o perfil seguro e `REIMS_VGPU_PASS_CHURN=on`. Essa
+chave já existente é diagnóstica: força o encerramento da continuação do render
+pass e abre uma instância separada por draw, sem alterar a apresentação. O log
+confirmou `render_pass_continuations=0`, mas a captura
+`/tmp/reims-t009-pass-churn-on.png` manteve a mesma corrupção estável no
+scrollbar e nos botões do Setup Assistant. A hipótese de continuação de render
+pass, isoladamente, fica descartada; não foi criado patch de produção.
+
+### A/B runtime #58 — o mesmo glitch aparece no console gráfico do QEMU
+
+O mesmo `reims-vgpu-pci` foi executado com `REIMS_VGPU_WINDOW=0`, portanto sem
+a janela Vulkan/winit do Reims e usando somente o display gráfico tradicional do
+QEMU. A captura direta da janela QEMU `0x1200009`,
+`/tmp/reims-t009-qemu-display-0821.png`, reproduziu visualmente o mesmo padrão:
+o scrollbar e os botões inferiores já chegaram corrompidos ao
+`DisplaySurface`. Isso elimina o presenter X11/winit, o blit/copy da janela e a
+captura X11 como causa. O defeito está antes da apresentação, no conteúdo
+Vulkan que o `reims-vgpu-pci` entrega ao console; o caminho `vmware-svga` segue
+sendo apenas um controle do QEMU, pois não executa esse produtor Vulkan.
+
+Os dois runtimes foram encerrados após as capturas, sem merge, sem alteração
+destrutiva dos discos e sem alteração de código. T009 continua `[-]`.
