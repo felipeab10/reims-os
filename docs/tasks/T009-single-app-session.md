@@ -1300,6 +1300,13 @@ menor risco, sempre atrás de um perfil experimental. Se o código ARM/vmapple
 for publicado antes desse marco, a implementação será reavaliada contra ele e
 o foco poderá mudar para validação do caminho oficial.
 
+O probe `scripts/browser-probe/guest_metal_caps.py` agora consulta também
+`-[MTLDevice supportsOpenGL]` quando o objeto anuncia esse seletor. Isso torna
+observável, no próprio guest, a capacidade que decide se os registros `0x8a`
+–`0x98` podem ser emitidos; a ausência do seletor é reportada separadamente de
+uma resposta `false`. A alteração é somente diagnóstica e não muda a capacidade
+anunciada pelo dispositivo.
+
 Uma nova conferência do upstream (`steelbrain/reims-vgpu`, master
 `69a57dd69a`) não encontrou o código ARM/vmapple. O plugin PCI do macOS também
 não existe neste checkout: só temos o shim QEMU, o modelo Rust e as medições
