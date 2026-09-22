@@ -603,6 +603,24 @@ WM-less da T009. O artefato permanece somente como tentativa inválida:
 
 Artefato válido mais recente: `/home/felipeab10/Documentos/reims-t009-runtime-t001-r45-current-wmless-pause/`.
 
+O runtime supervisionado #46 repetiu o braço atual com `reset`, agora com
+`lifecycle.log`/`result.json` do supervisor preservados. A sessão usou o
+caminho válido `wm=none fullscreen=override_redirect`, publicou apenas
+`first frame presented` e não publicou `first guest frame`. O QMP registrou
+`RESET guest=true reason=guest-reset` em aproximadamente 62 s e novamente em
+aproximadamente 122 s; não houve panic serial, `VK_ERROR_DEVICE_LOST` ou erro
+fatal Vulkan. O timeout externo veio depois da segunda repetição, portanto o
+supervisor classificou a sessão como `EXTERNAL_SIGNAL`, sem apagar os resets
+anteriores.
+
+Esse é o padrão temporal mais forte até aqui: quando o caminho pós-XNU não
+chega ao frame residente do convidado, o guest reinicia em ciclos de cerca de
+60 s. Ainda não prova qual espera interna do guest expira, mas permite que a
+próxima instrumentação correlacione o último `present`/`stamp` antes de cada
+reset.
+
+Artefato: `/home/felipeab10/Documentos/reims-t009-runtime-t001-r46-supervised-reset/logs/boot-20260921-213457-86bba867/`.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
