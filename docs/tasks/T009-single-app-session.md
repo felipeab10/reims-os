@@ -1153,3 +1153,26 @@ A alteração elimina a hipótese de escopo amplo/incorreto da barreira como cau
 única. O problema continua restrito à combinação primeira imagem + render pass
 `LOAD` em `GENERAL`; nenhum runtime apresentou `device_lost`, panic ou reset.
 O probe fica desligado por padrão e T009 continua `[-]`.
+
+### Runtime #68 — A/B do layout residente contra `GENERAL`
+
+Para testar se o defeito vinha da escolha de layout, foi executado um runtime
+controlado com `REIMS_VGPU_COLOR_GENERAL=off` e um probe temporário que evitava
+marcar o alvo como host-accessible quando `REIMS_VGPU_GUEST_IMPORT=off`. O log
+confirmou a mudança esperada:
+
+```text
+gva_first_materialization ... guest_backed=0 color_input=0 feedback=0
+                             pass_layout=COLOR_ATTACHMENT_OPTIMAL
+target_content_probe ... changed_outside=3471 changed_inside=49
+                         swapped_outside=3471 swapped_inside=49
+```
+
+O resultado negativo é decisivo: trocar `GENERAL` por
+`COLOR_ATTACHMENT_OPTIMAL` não altera a corrupção da primeira materialização.
+O probe temporário foi removido e nenhum comportamento padrão foi alterado.
+O runtime terminou por timeout, apresentou o primeiro frame residente, sem
+`device_lost`, panic, reset ou alteração destrutiva dos discos. A causa segue
+na produção/preservação do primeiro alvo — provavelmente na semântica de
+`LOAD`/cópia do seed — e não na apresentação nem no layout final. T009
+continua `[-]`.
