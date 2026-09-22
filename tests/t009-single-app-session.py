@@ -173,7 +173,9 @@ class T009SingleAppSessionTests(unittest.TestCase):
         self.assertEqual(self.contract(proc)["REIMS_VGPU_X11_WMLESS"], "1")
         proc = self.run_session(REIMS_VGPU_X11_WMLESS="")
         self.assertEqual(self.contract(proc)["REIMS_VGPU_X11_WMLESS"], "1")
-        self.assertIn("REIMS_VGPU_X11_WMLESS=1", SESSION.read_text())
+        session_text = SESSION.read_text()
+        self.assertIn("REIMS_VGPU_X11_WMLESS=1", session_text)
+        self.assertRegex(session_text, r"export .*REIMS_VGPU_X11_WMLESS")
         print("T009_WMLESS_X11_CONTRACT=PASS")
 
     def test_unknown_argument_rejected(self):
