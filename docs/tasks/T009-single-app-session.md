@@ -1330,3 +1330,26 @@ A tabela agora fica no decoder de renderização, que é o proprietário da
 classificação de registros ainda sem interpretação. A compilação Linux/Vulkan
 passou após essa reorganização. O teste de VM continua pendente porque falta a
 personalidade do guest que emite esses opcodes.
+
+### Runtime #74 — Capability OpenGL consultada diretamente no guest
+
+Com o macOS 15.8 autenticado por SSH, a leitura direta via Objective-C/JXA
+retornou `device=Apple Paravirtual device`, seletor `supportsOpenGL` disponível
+e valor `false`. Isso confirma que a personalidade PCI atual não habilita o
+rung OpenGL; os opcodes `0x8a`–`0x98` não devem ser habilitados no host para
+esta personalidade. Essa resposta mede a capacidade OpenGL legada de
+`MTLDevice`; isoladamente, ela **não** prova que ANGLE/Metal está indisponível
+nem explica o fallback observado no Chrome. `system_profiler` confirma
+`Metal Support: Metal 2`, mas isso também não garante que o ANGLE consiga criar
+seu dispositivo/contexto.
+
+O probe Python existente não executou nesta instalação limpa: `/usr/bin/python3`
+é um shim que solicita Command Line Tools ao usar `ctypes`. Foi adicionado
+`scripts/browser-probe/guest_opengl_caps.js`, que usa o bridge JXA nativo e não
+instala ferramentas. O arquivo foi executado com sucesso no guest e retornou
+`{"device":"Apple Paravirtual device","supportsOpenGLSelectorAvailable":true,"supportsOpenGL":false}`.
+Nenhuma capacidade foi alterada, nenhum benchmark foi iniciado e o disco
+persistente não foi usado para escrita; a VM está rodando sobre clone
+reversível do snapshot `base`. O próximo diagnóstico para o Chrome deve ler o
+backend/contexto ANGLE/Metal diretamente, não inferi-lo a partir de
+`supportsOpenGL`.
