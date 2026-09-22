@@ -752,3 +752,22 @@ glitches reproduzidos na instalação limpa. A próxima investigação deve foca
 produção/consumo dos residentes amostrados — especialmente a validade do
 conteúdo entre o Store/writeback e o bind de textura — e não mais alternar
 layouts globalmente.
+
+### Auditoria estática seguinte — backing compartilhado e bind de residente
+
+A revisão do ciclo `Store → residente → bind` não encontrou uma janela sem
+estado de conteúdo. O caminho de amostra marca o residente como usado antes da
+validação, exige geometria e `content_ready`, e só então escolhe entre bind
+direto, snapshot ou feedback. Depois do submit, o alvo é publicado com o
+`ColorWrite`/`ColorFeedback` efetivo; uma amostra residente avança para
+`ShaderRead`, enquanto snapshot/feedback não sobrescrevem indevidamente o
+estado do alvo que também é attachment.
+
+Também foi confirmado o caso de primeiro LOAD a partir de memória compartilhada:
+o import Vulkan nasce em `PREINITIALIZED`, e o draw grava a barreira para
+`GENERAL` incluindo `HOST_WRITE` antes do render pass. O teste
+`loading_shared_backing_orders_both_the_prior_gpu_access_and_host_writes`
+protege essa relação. Portanto não há correção causal segura para aplicar nessa
+camada com a evidência atual; o próximo dado necessário é o primeiro bind de
+residente que chega com `content_ready/access/generation` incompatíveis com o
+Store que o produziu.
