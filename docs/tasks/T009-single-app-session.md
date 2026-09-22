@@ -734,3 +734,21 @@ classificar o primeiro draw parcial incorreto e auditar LOAD/store, continuaçã
 de pass e estado do residente. O bloqueador atual permanece aberto: há base
 para uma próxima correção causal no backend Vulkan, mas não para marcar T009
 como concluída.
+
+### A/B seguinte — `REIMS_VGPU_COLOR_GENERAL=off`
+
+O braço de controle repetiu a mesma fixture e os mesmos parâmetros, alterando
+somente `REIMS_VGPU_COLOR_GENERAL=off`, para separar o layout unificado
+`GENERAL` da sincronização de residentes. O guest chegou novamente ao Setup
+Assistant, publicou `first guest frame presented via rail resident` e terminou
+por timeout controlado, sem `VK_ERROR_DEVICE_LOST` ou reset observável. A tela
+continuou com a mesma corrupção em textos, ícones e botões.
+
+Esse braço aumentou os barriers esperados (`passheld_outside_resident_layout`),
+mas os draws preservadores continuaram entrando majoritariamente como
+`engine_partial_preserve_with_gpu_content`. Assim, tanto LOAD/store sem fonte
+quanto o layout `GENERAL` foram descartados como explicação suficiente para os
+glitches reproduzidos na instalação limpa. A próxima investigação deve focar a
+produção/consumo dos residentes amostrados — especialmente a validade do
+conteúdo entre o Store/writeback e o bind de textura — e não mais alternar
+layouts globalmente.
