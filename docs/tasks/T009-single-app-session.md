@@ -1353,3 +1353,43 @@ persistente não foi usado para escrita; a VM está rodando sobre clone
 reversível do snapshot `base`. O próximo diagnóstico para o Chrome deve ler o
 backend/contexto ANGLE/Metal diretamente, não inferi-lo a partir de
 `supportsOpenGL`.
+
+### Runtime #75 — Requisito de família Metal do ANGLE
+
+O probe JXA foi estendido para consultar `MTLDevice.supportsFamily:` sem
+instalar ferramentas no guest. Resultado do dispositivo `Apple Paravirtual
+device`: `Mac1=true`, `Mac2=false`, `Apple1=false` e `Apple2=false` (as demais
+famílias consultadas também foram registradas no JSON do probe). A consulta é
+somente leitura e descreve as capacidades que o dispositivo realmente anuncia.
+
+Isso corresponde a um bloqueio concreto no ANGLE Metal upstream: durante
+`DisplayMtl::initializeImpl`, quando `requireGpuFamily2` está habilitado, ANGLE
+encerra a inicialização antes de criar a command queue se
+`supportsEitherGPUFamily(Apple1, Mac2)` for falso. O dispositivo do guest
+falha exatamente nas duas alternativas observadas. Isso é uma condição
+concreta de falha **se** o Chrome tentar inicializar esse backend ANGLE Metal;
+ainda não prova que explique o estado atual do Chrome nem um defeito de
+apresentação Vulkan no host. A inferência precisa ser confirmada contra a
+revisão ANGLE embutida no Chrome 153; o código upstream consultado não prova
+sozinho que a revisão do Chrome contém a mesma condição.
+
+Não vamos forçar `Mac2`/`Apple1` como suportados nem desabilitar o requisito às
+cegas: isso anunciaria capacidades não implementadas e poderia trocar uma
+falha explícita por corrupção ou instabilidade. É necessário distinguir uma
+falha ao inicializar ANGLE Metal de uma desativação de GL anterior a essa
+tentativa.
+
+### Runtime #76 — Estado real do processo GPU do Chrome
+
+Inspecionamos os processos do Chrome no guest via SSH. O processo GPU ativo
+inclui `--use-gl=disabled`; logo, nesta sessão o Chrome não está executando
+ANGLE/Metal. Isso impede atribuir diretamente a tela de aceleração desativada
+ao teste de `Mac GPU Family 2`: a checagem Metal é uma hipótese para a rota
+ANGLE, mas pode nem estar sendo alcançada pelo Chrome. A capacidade observada do
+dispositivo continua sendo real e útil, porém não explica sozinha o fallback.
+
+O processo principal não publica uma porta DevTools remota, e os logs do
+Unified Logging não forneceram motivo de seleção do backend. Próximo passo
+seguro: obter o relatório completo `chrome://gpu` (feature status, problemas e
+command line) e correlacioná-lo ao motivo de GL desativado, sem reiniciar o
+Chrome/VM nem mexer nos discos. A sessão e o estado do guest permanecem ativos.
