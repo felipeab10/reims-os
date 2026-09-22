@@ -1299,3 +1299,12 @@ O próximo marco é implementar e validar os registros necessários em ordem de
 menor risco, sempre atrás de um perfil experimental. Se o código ARM/vmapple
 for publicado antes desse marco, a implementação será reavaliada contra ele e
 o foco poderá mudar para validação do caminho oficial.
+
+O inventário passou a guardar também o nome do seletor e o tamanho esperado do
+corpo de cada registro. Quando um opcode aparecer, o log identifica o seletor
+e compara `expected_body_len` com `actual_body_len`, mantendo o hex inicial do
+registro para análise. Isso permite distinguir imediatamente uma emissão
+compatível de um opcode desconhecido ou de um payload truncado. Ainda não há
+execução desses comandos: o plugin PCI do guest não os emite enquanto
+`supportsOpenGL` responder falso, e o host não deve declarar a capacidade antes
+de existir um executor validado.
