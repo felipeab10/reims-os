@@ -1134,3 +1134,22 @@ não é a causa; o defeito está na sequência de primeira carga Vulkan — cóp
 barreira/layout ou `LOAD` do render pass. O probe permanece desligado por
 padrão. Runtime terminou por timeout, sem `device_lost`, panic, reset ou
 alteração destrutiva dos discos. T009 continua `[-]`.
+
+### Runtime #67 — A/B de barreira explícita após o seed
+
+O probe `REIMS_VGPU_FIRST_MATERIALIZATION_EXPLICIT_BARRIER_PROBE=on`
+(`d34bc4fe21`) substituiu, somente na primeira materialização, o escopo da
+barreira após `vkCmdCopyBufferToImage` por
+`TRANSFER_WRITE → COLOR_ATTACHMENT_OUTPUT`, com acessos explícitos de leitura
+e escrita do attachment. O resultado permaneceu:
+
+```text
+gva_first_materialization ... color0_load=Preserve seed_slot=1
+                             target_access=UNDEFINED pass_layout=GENERAL
+target_content_probe ... changed_outside=3471 changed_inside=49
+```
+
+A alteração elimina a hipótese de escopo amplo/incorreto da barreira como causa
+única. O problema continua restrito à combinação primeira imagem + render pass
+`LOAD` em `GENERAL`; nenhum runtime apresentou `device_lost`, panic ou reset.
+O probe fica desligado por padrão e T009 continua `[-]`.
