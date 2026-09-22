@@ -863,3 +863,11 @@ o reset do guest/dispositivo. O `device_reset` ocorre sem
 eventos, mas ainda não identifica se o reboot foi provocado pelo guest ou se
 houve uma falha Vulkan anterior. O runtime foi encerrado imediatamente após o
 evento, sem destruir os discos. T009 continua `[-]`.
+
+Como experimento A/B derivado dessa evidência, o PR #5 passou a aceitar
+`REIMS_VGPU_WINDOW_FORCE_CPU=on`. Essa chave não altera o padrão: apenas força o
+presenter a ignorar o residente Vulkan e usar o `WindowCpuFrame` completo. Se a
+imagem corrigir, a falha está no residente ou na transferência residente→janela;
+se permanecer igual, a origem está antes desse ponto, no frame CPU/writeback.
+O teste Vulkan/X11 do presenter passou (6 testes); a validação live ainda está
+pendente.
