@@ -1014,3 +1014,32 @@ Isso confirma que o blend é necessário para a composição normal, mas não é
 correção do glitch. O probe fica desligado por padrão e não há patch de
 produção justificado por este A/B. O runtime foi encerrado após a captura, sem
 reset, merge ou alteração destrutiva dos discos. T009 continua `[-]`.
+
+### Runtime #62 — A/B de seed para `MTLLoadActionDontCare`
+
+O PR #5 recebeu o probe diagnóstico `REIMS_VGPU_DONTCARE_SEED_PROBE=on`. Ele
+inclui `MTLLoadActionDontCare` no mesmo caminho de resolução de seed usado por
+`LOAD`, mas permanece desligado por padrão. A motivação foi direta: o código
+anterior deixava um alvo GVA parcial com `DontCare`, sem seed e sem residente
+encadeado; a chave de pass resultante era `AttachmentLoadOp::CLEAR`, embora a
+interface do guest redesenhe apenas o scissor.
+
+O runtime foi executado na fixture limpa com
+`REIMS_VGPU_GUEST_IMPORT=off`, `REIMS_VGPU_SAMPLED_IDENTITY=off`,
+`REIMS_VGPU_TARGET_CONTENT_PROBE=on`, `GUEST_MEMORY=false` e
+`reims-vgpu-pci`. O log confirmou o novo caminho no alvo crítico de 64×64:
+
+```text
+dontcare_seed_probe texture_ref=86 target=64x64
+target_content_probe ... pipe=48 ... scissor=0,0,25,25 load=0x0 source=cpu_seed
+target_content_probe ... pipe=48 ... changed_outside=3471 changed_inside=49
+store_routes ... color0_declared_dontcare=1 dontcare_seed_served=1
+```
+
+O `device_lost` permaneceu zero, não houve panic/reset do guest e a VM foi
+encerrada pelo timeout, preservando os discos. O A/B prova que o passe crítico
+estava caindo no caminho sem seed, mas também mostra que a semente CPU escolhida
+não é equivalente ao residente naquele momento: ela produz alterações fora do
+scissor. Isso impede transformar a ampliação em patch de produção sem corrigir
+antes a autoridade/sincronização da semente GVA. O probe foi publicado e fica
+desligado por padrão; T009 continua `[-]`.
