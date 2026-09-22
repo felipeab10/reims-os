@@ -65,6 +65,7 @@ REIMS_VGPU_WINDOW=1        default se ausente
 REIMS_VGPU_FULLSCREEN=1    default se ausente
 REIMS_VGPU_BACKEND=vulkan  default se ausente
 REIMS_VGPU_GUEST_IMPORT=off  workaround de estabilidade; override explícito preservado
+REIMS_VGPU_SAMPLED_IDENTITY=off  mitigação visual; override explícito preservado
 ```
 
 ### Mitigação de estabilidade do guest
@@ -77,6 +78,13 @@ permaneceu estável. A sessão dedicada, portanto, força `off` e usa o caminho
 de cópia como mitigação temporária. Isso não corrige os glitches visuais nem
 marca a T009 como concluída; a investigação do import direto fica separada no
 `reims-vgpu`.
+
+O cache de identidade de texturas amostradas também fica desligado por padrão na
+sessão T009. Um teste controlado com a mesma instalação mostrou que sua
+desativação remove os artefatos stale do ícone, título e corpo da tela; os
+artefatos restantes em fontes de listas e botões continuam sendo investigados
+separadamente no caminho de upload/formato. A opção continua sendo override
+explícito para permitir uma comparação futura.
 
 `winit 0.30` não tem `WINIT_UNIX_BACKEND` e prefere Wayland quando `WAYLAND_DISPLAY`/`WAYLAND_SOCKET` e `DISPLAY` coexistam. Por isso o seletor do companion remove as variáveis Wayland em `x11` e recusa quando `DISPLAY` está vazio, e o `boot-x86.sh` não recria `WAYLAND_DISPLAY` nesse modo. Um `DISPLAY` definido, por si só, não prova X11.
 
