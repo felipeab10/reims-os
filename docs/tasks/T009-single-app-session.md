@@ -885,3 +885,9 @@ investigar como seus pixels são escritos/transferidos antes da publicação.
 
 O runtime foi encerrado após a captura; os discos não foram alterados nem
 destruídos.
+
+Como próximo experimento isolado, o PR #5 também recebeu
+`REIMS_VGPU_WINDOW_FORCE_COPY=on`. Em uma janela 1:1 essa chave mantém o
+residente, mas troca `vkCmdBlitImage` por `vkCmdCopyImage`, removendo filtro e
+transformação de viewport da apresentação. Os 6 testes do presenter passaram;
+o A/B visual ainda precisa ser executado.
