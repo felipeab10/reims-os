@@ -551,6 +551,41 @@ evento causal.
 Artefatos: `/tmp/reims-t009-r40b-trace/` e
 `/home/felipeab10/Documentos/reims-t009-runtime-t001-r40-pause-trace/vms/reims-57f0fd6b61a74542/run-r40b/`.
 
+### A/B #41/#42/#43: a regressão está no staticlib Rust atual e a entrada tinha uma corrida de foco
+
+Para separar QEMU, firmware, disco e servidor X11 do código Rust, os braços
+foram executados com a mesma cópia-base de T001, o mesmo OpenCore/OVMF, a
+mesma ROM GOP, Xephyr e perfil `16G/8`. O QEMU também permaneceu no mesmo
+commit do submódulo (`bd88218d`); variou apenas o checkout que produz o
+staticlib Vulkan:
+
+- #41, revisão histórica `bb171c33`, chegou a `first guest frame presented via
+  rail resident` e não registrou reset durante a janela controlada;
+- #42, revisão atual `fcc2d39`/`33ba39d`, publicou apenas o primeiro frame e
+  registrou `RESET guest=true reason=guest-reset` aproximadamente 62 segundos
+  depois, repetindo o ciclo EFI → XNU;
+- #43, último ponto conhecido antes do espelhamento do cursor (`9f93935`),
+  recompilado isoladamente, voltou a publicar o frame do convidado e permaneceu
+  sem reset durante 105 segundos.
+
+Esse A/B torna o bloqueador reproduzível no staticlib Rust introduzido depois
+de `9f93935`, e não no QEMU ou no disco. O reset ainda não deve ser tratado
+como resolvido; T009 continua `[-]` até haver desktop macOS estável e shutdown
+natural.
+
+A mesma investigação explicou a tela do OpenCore sem teclado/mouse observada
+no Xephyr: a janela podia confirmar foco X11, mas a captura era solicitada
+somente quando o `winit` emitia `Focused(true)`. Se esse evento chegasse antes
+da ligação do presenter, a imagem aparecia sem a posse efetiva dos dispositivos.
+O commit `7da0a360d4` torna a transição idempotente: após `XSetInputFocus` e
+`XGetInputFocus` confirmarem a janela, o estado de teclado é marcado como
+focado e `x11_grab_keyboard` é solicitado imediatamente. Os 33 testes do
+presenter passaram com `--no-default-features --features backend-vulkan,host-window`.
+
+Artefatos A/B: `/tmp/reims-t009-r41-historical-qemu/`,
+`/tmp/reims-t009-r42-current-qemu-samebase/` e
+`/home/felipeab10/Documentos/reims-t009-runtime-t001-r43-historical-rust/`.
+
 `mechanism=x11_grab_keyboard` (`XGrabKeyboard`, na linha `window_capture_mode`) prova que o `winit` abriu X11 e não Wayland — é a evidência do **backend**. Ela não prova que o servidor é Xorg: o Xwayland da sessão niri também oferece X11/Xlib e produziria o mesmo mecanismo. São duas camadas, e uma não substitui a outra:
 
 1. **Backend do winit** — `mechanism=x11_grab_keyboard` em `window_capture_mode`; depois que a janela recebe foco, `window_capture_engaged` com o mesmo mecanismo.
