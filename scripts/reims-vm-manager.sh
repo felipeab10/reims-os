@@ -24,6 +24,31 @@ resources(){ read -r -p "CPUs [$HOST_CORES]: " CORES; CORES=${CORES:-4}; read -r
 new_id(){ local id; while :; do id="reims-$(uuidgen | tr -d "-" | cut -c1-16)"; [[ ! -e "$WORK_ROOT/$id" && ! -e "$RAILS_DIR/$id" ]] && { VM_ID=$id; return; }; done; }
 create_installing_state(){ python3 "$ROOT/scripts/reims-state.py" configure --vm-id "$VM_ID" --macos "$VERSION" --cpu "$CORES" --ram-gb "$RAM" --disk-gb "$DISK" >/dev/null; }
 run_opencore_builder(){ local base=$1 sw=$2 env_file=$3 rc log; log="$base/run/provision.log"; mkdir -p "$base/run"; printf "\n=== build_opencore ===\n" >>"$log"; emit_progress build_opencore running; if [[ -n "${REIMS_T002_BUILDER:-}" ]]; then if bash "$REIMS_T002_BUILDER" >>"$log" 2>&1; then :; else rc=$?; emit_progress build_opencore failed "Falha ao configurar o OpenCore"; printf "ERRO: Falha ao configurar o OpenCore (consulte %s)\n" "$log" >&2; return "$rc"; fi; elif (cd "$sw" && source "$env_file" && bash ./generate-specific-bootdisk.sh --model "$DEVICE_MODEL" --serial "$SERIAL" --board-serial "$BOARD_SERIAL" --uuid "$UUID" --mac-address "$MAC_ADDRESS" --master-plist "$base/serial/config-auto.plist" --output-bootdisk "$base/persistent/OpenCore.qcow2") >>"$log" 2>&1; then :; else rc=$?; emit_progress build_opencore failed "Falha ao configurar o OpenCore"; printf "ERRO: Falha ao configurar o OpenCore (consulte %s)\n" "$log" >&2; return "$rc"; fi; emit_progress build_opencore completed; }
+verify_opencore_image(){
+  local image=$1 tmp config
+  tmp=$(mktemp -d)
+  config="$tmp/config.plist"
+  if ! guestfish --ro -a "$image" >"$tmp/layout" <<EOF
+run
+list-filesystems
+mount-ro /dev/sda1 /
+download /EFI/BOOT/BOOTx64.efi $tmp/BOOTx64.efi
+download /EFI/OC/OpenCore.efi $tmp/OpenCore.efi
+download /EFI/OC/config.plist $config
+EOF
+  then
+    die "OpenCore.qcow2 inválido: EFI/OC não está na partição EFI esperada (/dev/sda1)"
+  fi
+  python3 - "$config" <<'PY'
+import plistlib, sys
+path = sys.argv[1]
+with open(path, "rb") as f:
+    data = plistlib.load(f)
+boot = data.get("Misc", {}).get("Boot", {})
+if boot.get("PickerMode") != "Builtin" or boot.get("Timeout") != 5:
+    raise SystemExit("OpenCore.qcow2 inválido: PickerMode/Timeout não são Builtin/5")
+PY
+}
 verify(){ python3 - "$1" "$2" <<'PY'
 import hashlib,struct,sys
 p,c=sys.argv[1:]; b=open(c,'rb').read(); H=struct.Struct('<4sIBBBxQQQ'); C=struct.Struct('<I32s'); m,hs,v,cm,sig,n,o,so=H.unpack_from(b); assert (m,hs,v,cm,sig)==(b'CNKL',36,1,1,1); f=open(p,'rb')
@@ -36,7 +61,7 @@ import plistlib,sys,tempfile,os
 path=sys.argv[1]; data=open(path,'rb').read(); start=data.find(b'<?xml'); assert start>=0
 fd,tmp=tempfile.mkstemp(dir=os.path.dirname(path)); os.close(fd); open(tmp,'wb').write(data[start:]); p=plistlib.load(open(tmp,'rb')); p.setdefault('Misc',{}).setdefault('Boot',{}).update(ShowPicker=True,Timeout=5,PickerMode='Builtin'); p.setdefault('Misc',{}).setdefault('Security',{})['AllowSetDefault']=True; p.setdefault('UEFI',{}).setdefault('Quirks',{})['RequestBootVarRouting']=True; plistlib.dump(p,open(path,'wb'),sort_keys=False); os.unlink(tmp)
 PY
-env_file=$(find "$base/serial/envs" -type f -name "*.env.sh" -print -quit); [[ -n "$env_file" ]] || die identity-env; run_opencore_builder "$base" "$sw" "$env_file"; printf 'model=%s\nplist=%s\n' "$SMBIOS_MODEL" "$generated" > "$base/serial-generator.txt"; }
+env_file=$(find "$base/serial/envs" -type f -name "*.env.sh" -print -quit); [[ -n "$env_file" ]] || die identity-env; run_opencore_builder "$base" "$sw" "$env_file"; verify_opencore_image "$base/persistent/OpenCore.qcow2"; printf 'model=%s\nplist=%s\n' "$SMBIOS_MODEL" "$generated" > "$base/serial-generator.txt"; }
 prepare(){ base="$WORK_ROOT/$VM_ID"; [[ ! -e "$base" ]] || die "installation exists: $base"; mkdir -p "$base" "$base/persistent" "$RAILS_DIR/$VM_ID/snapshots"; installer="$base/installer"; mkdir -p "$installer" "$base/run"; d="$installer/$VERSION.dmg"; c="$installer/$VERSION.chunklist"; m="$installer/$VERSION.img"; disk="$base/persistent/macos.qcow2"; fetch_media "$base"; [[ -f "$d"&&-f "$c" ]]||die download; [[ -f "$m" ]]||dmg2img -i "$d" "$m"; [[ ! -e "$disk" ]] || die "persistent disk already exists: $disk"; qemu-img create -f qcow2 "$disk" "${DISK}G"; qemu-img info "$disk" | grep -Fq "virtual size: ${DISK} GiB" || die "persistent disk size mismatch"; [[ ! -e "$base/persistent/OVMF_VARS.fd" ]] || die "OVMF_VARS already exists"; cp --reflink=auto "$OSX_KVM/OVMF_VARS-1920x1080.fd" "$base/persistent/OVMF_VARS.fd"; [[ ! -e "$base/persistent/OVMF_CODE.fd" ]] || die "OVMF_CODE already exists"; cp --reflink=auto "$OSX_KVM/OVMF_CODE_4M.fd" "$base/persistent/OVMF_CODE.fd"; [[ ! -e "$base/persistent/OpenCore.qcow2" ]] || die "OpenCore already exists"; generate_opencore "$base"; port=$((2222+($(printf '%s' "$VM_ID"|cksum|awk '{print $1}')%1000))); while ss -ltn 2>/dev/null|grep -q ":$port "; do port=$((port+1)); done; run="$base/run"; mkdir -p "$run"; export REIMS_VGPU_BACKEND=vulkan DISPLAY_REFRESH_HZ=60 QEMU_REBOOT_ACTION=reset SSH_PORT="$port" RUN_DIR="$run" DISKS_DIR="$base" DISK_MASTER="$disk" OPENCORE_MASTER="$base/persistent/OpenCore.qcow2" OVMF_VARS_MASTER="$base/persistent/OVMF_VARS.fd" PERSISTENT_DIR="$base/persistent" INSTALL_MEDIA="$m" RAM="${RAM}G" CPU_CORES="$CORES" CPU_THREADS="$CORES" RAILS_DIR="$RAILS_DIR"; python3 "$ROOT/scripts/reims-supervisor.py" run --vm-id "$VM_ID" --appliance-state installing --run-dir "$run" --log-root "${REIMS_LOG_ROOT:-/var/log/reims}" -- "$REIMS_VGPU_ROOT/vm/boot-x86.sh" --persistent --device reims-vgpu-pci --rail "$VM_ID"; }
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   preflight
